@@ -15,6 +15,7 @@ import { TopicsModule } from '../topics/topics.module';
 import { LayoutsModule } from '../layouts/layouts.module';
 
 import { EventsDistributedLockService } from './services/distributed-lock-service';
+import { EventsPerformanceService } from './services/performance-service';
 import { StorageHelperService } from './services/storage-helper-service/storage-helper.service';
 import { TriggerHandlerQueueService } from './services/workflow-queue/trigger-handler-queue.service';
 import { WorkflowQueueService } from './services/workflow-queue/workflow.queue.service';
@@ -40,6 +41,7 @@ import { WorkflowQueueService } from './services/workflow-queue/workflow.queue.s
     StorageHelperService,
     TriggerHandlerQueueService,
     EventsDistributedLockService,
+    EventsPerformanceService,
   ],
 })
 export class EventsModule {}

@@ -400,7 +400,8 @@
     "nodemailer",
     "emailjs",
     "typeof",
-    "nbsp"
+    "nbsp",
+    "stddev"
   ],
   "flagWords": [],
   "patterns": [
