@@ -4,19 +4,19 @@ import styled from '@emotion/styled';
 import { Grid, useMantineColorScheme } from '@mantine/core';
 import { StepTypeEnum } from '@novu/shared';
 
-import FlowEditor from '../../../components/workflow/FlowEditor';
+import FlowEditor from './workflow/FlowEditor';
 import { colors } from '../../../design-system';
 import { getChannel, NodeTypeEnum } from '../shared/channels';
-import type { IForm } from '../../../components/templates/formTypes';
-import { useEnvController } from '../../../store/useEnvController';
+import type { IForm } from '../components/formTypes';
+import { useEnvController } from '../../../hooks';
 import { When } from '../../../components/utils/When';
-import { TemplatePageHeader } from '../../../components/templates/TemplatePageHeader';
-import { ActivePageEnum } from '../editor/TemplateEditorPage';
-import { DeleteConfirmModal } from '../../../components/templates/DeleteConfirmModal';
+import { TemplatePageHeader } from '../components/TemplatePageHeader';
+import { ActivePageEnum, EditorPages } from '../editor/TemplateEditorPage';
+import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 import { FilterModal } from '../filter/FilterModal';
 import { SelectedStep } from './SideBar/SelectedStep';
 import { AddStepMenu } from './SideBar/AddStepMenu';
-import { useTemplateFetcher } from '../../../components/templates/useTemplateFetcher';
+import { useTemplateFetcher } from '../components/useTemplateFetcher';
 
 const WorkflowEditorPage = ({
   setActivePage,
@@ -53,7 +53,8 @@ const WorkflowEditorPage = ({
   const {
     control,
     watch,
-    formState: { errors, isDirty: isDirtyForm },
+    clearErrors,
+    formState: { errors, isDirty: isDirtyForm, isSubmitted },
   } = useFormContext<IForm>();
   const { loading: loadingEditTemplate } = useTemplateFetcher(templateId);
 
@@ -77,6 +78,13 @@ const WorkflowEditorPage = ({
     setSelectedChannel(step.template.type);
     setActiveStep(index);
   }, [selectedNodeId]);
+
+  const setActivePageWrapper = (page: ActivePageEnum) => {
+    if (!isSubmitted && EditorPages.includes(page)) {
+      clearErrors('steps');
+    }
+    setActivePage(page);
+  };
 
   const confirmDelete = () => {
     const index = steps.findIndex((item) => item._id === toDelete);
@@ -116,7 +124,7 @@ const WorkflowEditorPage = ({
           <FlowEditor
             activePage={activePage}
             onDelete={onDelete}
-            setActivePage={setActivePage}
+            setActivePage={setActivePageWrapper}
             dragging={dragging}
             templateId={templateId}
             errors={errors}
@@ -151,7 +159,7 @@ const WorkflowEditorPage = ({
               <SelectedStep
                 selectedChannel={selectedChannel}
                 setSelectedChannel={setSelectedChannel}
-                setActivePage={setActivePage}
+                setActivePage={setActivePageWrapper}
                 steps={steps}
                 activeStep={activeStep}
                 control={control}

@@ -7,9 +7,9 @@ import { StepTypeEnum } from '@novu/shared';
 import { Button, colors, Text, Title } from '../../../../design-system';
 import { Close } from '../../../../design-system/icons/actions/Close';
 import { getChannel, NodeTypeEnum } from '../../shared/channels';
-import type { IForm } from '../../../../components/templates/formTypes';
+import type { IForm } from '../../components/formTypes';
 import { StepActiveSwitch } from '../StepActiveSwitch';
-import { useEnvController } from '../../../../store/useEnvController';
+import { useEnvController } from '../../../../hooks';
 import { When } from '../../../../components/utils/When';
 import { PlusCircle, Trash } from '../../../../design-system/icons';
 import { DigestMetadata } from '../DigestMetadata';
@@ -17,7 +17,7 @@ import { DelayMetadata } from '../DelayMetadata';
 import { Filters } from '../../filter/Filters';
 import { ShouldStopOnFailSwitch } from '../ShouldStopOnFailSwitch';
 import { ReplyCallback } from '../ReplyCallback';
-import { NavSection } from '../../../../components/templates/TemplatesSideBar';
+import { NavSection } from '../../components/TemplatesSideBar';
 import { StyledNav } from '../WorkflowEditorPage';
 
 const capitalize = (text: string) => {
@@ -80,16 +80,18 @@ export function SelectedStep({
                 variant="outline"
                 data-test-id="edit-template-channel"
                 fullWidth
-                onClick={() =>
-                  setActivePage(selectedChannel === StepTypeEnum.IN_APP ? selectedChannel : capitalize(selectedChannel))
-                }
+                onClick={() => {
+                  setActivePage(
+                    selectedChannel === StepTypeEnum.IN_APP ? selectedChannel : capitalize(selectedChannel)
+                  );
+                }}
               >
                 {readonly ? 'View' : 'Edit'} Template
               </EditTemplateButton>
               <Divider my={30} />
               {steps.map((i, index) => {
                 return (
-                  <When key={index} truthy={index === activeStep}>
+                  <When key={i._id || i.id} truthy={index === activeStep}>
                     <Stack key={index}>
                       <StepActiveSwitch index={activeStep} control={control} />
                       <ShouldStopOnFailSwitch index={activeStep} control={control} />
@@ -142,7 +144,6 @@ export function SelectedStep({
                   <Close />
                 </ActionIcon>
               </ButtonWrapper>
-
               <Text mr={10} mt={10} size="md" color={colors.B60}>
                 Configure the digest parameters. Read more about the digest engine{' '}
                 <a target={'_blank'} rel="noopener noreferrer" href={'https://docs.novu.co/platform/digest'}>
@@ -155,7 +156,7 @@ export function SelectedStep({
               {steps.map((i, index) => {
                 return index === activeStep ? (
                   <DigestMetadata
-                    key={index}
+                    key={i._id || i.id}
                     control={control}
                     index={index}
                     loading={isLoading || isUpdateLoading}
