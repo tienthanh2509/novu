@@ -1,9 +1,9 @@
 import { MemberRoleEnum } from '@novu/shared';
 import styled from '@emotion/styled';
 
-import { Dropdown, Tag } from '../../../design-system';
+import { Dropdown, Tag } from '@novu/design-system';
 
-export function MemberRole({ member, onChangeMemberRole, isEnableMemberActions }) {
+export function MemberRole({ member, onChangeMemberRole, isEnableMemberActions, allowChangeRole = false }) {
   const TagElement = () => {
     return <>{member.roles.find((role: string) => role === 'admin') ? <Tag>Admin</Tag> : <Tag>Member</Tag>}</>;
   };
@@ -25,9 +25,13 @@ export function MemberRole({ member, onChangeMemberRole, isEnableMemberActions }
     <>
       <Dropdown
         control={
-          <ClickableTag data-test-id="change-member-role-btn">
+          allowChangeRole ? (
+            <ClickableTag data-test-id="change-member-role-btn">
+              <TagElement />
+            </ClickableTag>
+          ) : (
             <TagElement />
-          </ClickableTag>
+          )
         }
       >
         {availableRoles().map((role, index: number) => (

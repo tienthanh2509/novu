@@ -1,76 +1,110 @@
-import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, UnprocessableEntityException, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
 import * as hat from 'hat';
 import { merge } from 'lodash';
-import { AnalyticsService } from '@novu/application-generic';
-import { NotificationTemplateRepository } from '@novu/dal';
-import { ISubscribersDefine } from '@novu/shared';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  buildNotificationTemplateIdentifierKey,
+  CachedEntity,
+  Instrument,
+  InstrumentUsecase,
+  IWorkflowDataDto,
+  IWorkflowJobDto,
+  StorageHelperService,
+  WorkflowQueueService,
+} from '@novu/application-generic';
+import { ReservedVariablesMap, TriggerContextTypeEnum, TriggerEventStatusEnum } from '@novu/shared';
+import {
+  WorkflowOverrideRepository,
+  TenantEntity,
+  WorkflowOverrideEntity,
+  NotificationTemplateRepository,
+  NotificationTemplateEntity,
+  TenantRepository,
+} from '@novu/dal';
 
-import { ANALYTICS_SERVICE } from '../../../shared/shared.module';
-import { ApiException } from '../../../shared/exceptions/api.exception';
-import { VerifyPayload } from '../verify-payload/verify-payload.usecase';
-import { VerifyPayloadCommand } from '../verify-payload/verify-payload.command';
-import { StorageHelperService } from '../../services/storage-helper-service/storage-helper.service';
 import { ParseEventRequestCommand } from './parse-event-request.command';
-import { TriggerHandlerQueueService } from '../../services/workflow-queue/trigger-handler-queue.service';
-import { MapTriggerRecipients, MapTriggerRecipientsCommand } from '../map-trigger-recipients';
+import { ApiException } from '../../../shared/exceptions/api.exception';
+import { VerifyPayload, VerifyPayloadCommand } from '../verify-payload';
+
+const LOG_CONTEXT = 'ParseEventRequest';
 
 @Injectable()
 export class ParseEventRequest {
   constructor(
     private notificationTemplateRepository: NotificationTemplateRepository,
     private verifyPayload: VerifyPayload,
-    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService,
     private storageHelperService: StorageHelperService,
-    private triggerHandlerQueueService: TriggerHandlerQueueService,
-    private mapTriggerRecipients: MapTriggerRecipients
+    private workflowQueueService: WorkflowQueueService,
+    private tenantRepository: TenantRepository,
+    private workflowOverrideRepository: WorkflowOverrideRepository
   ) {}
 
+  @InstrumentUsecase()
   async execute(command: ParseEventRequestCommand) {
     const transactionId = command.transactionId || uuidv4();
 
-    const mappedActor = command.actor ? this.mapTriggerRecipients.mapSubscriber(command.actor) : undefined;
-    const mappedRecipients = await this.mapTriggerRecipients.execute(
-      MapTriggerRecipientsCommand.create({
-        environmentId: command.environmentId,
-        organizationId: command.organizationId,
-        recipients: command.to,
-        transactionId,
-        userId: command.userId,
-        actor: mappedActor,
-      })
-    );
-
-    await this.validateSubscriberIdProperty(mappedRecipients);
-
-    const template = await this.notificationTemplateRepository.findByTriggerIdentifier(
-      command.environmentId,
-      command.identifier
-    );
+    const template = await this.getNotificationTemplateByTriggerIdentifier({
+      environmentId: command.environmentId,
+      triggerIdentifier: command.identifier,
+    });
 
     if (!template) {
-      throw new UnprocessableEntityException('template_not_found');
+      throw new UnprocessableEntityException('workflow_not_found');
     }
 
-    if (!template.active || template.draft) {
+    const reservedVariablesTypes = this.getReservedVariablesTypes(template);
+    this.validateTriggerContext(command, reservedVariablesTypes);
+
+    let tenant: TenantEntity | null = null;
+    if (command.tenant) {
+      tenant = await this.tenantRepository.findOne({
+        _environmentId: command.environmentId,
+        identifier: typeof command.tenant === 'string' ? command.tenant : command.tenant.identifier,
+      });
+
+      if (!tenant) {
+        return {
+          acknowledged: true,
+          status: TriggerEventStatusEnum.TENANT_MISSING,
+        };
+      }
+    }
+
+    let workflowOverride: WorkflowOverrideEntity | null = null;
+    if (tenant) {
+      workflowOverride = await this.workflowOverrideRepository.findOne({
+        _environmentId: command.environmentId,
+        _organizationId: command.organizationId,
+        _workflowId: template._id,
+        _tenantId: tenant._id,
+      });
+    }
+
+    const inactiveWorkflow = !workflowOverride && !template.active;
+    const inactiveWorkflowOverride = workflowOverride && !workflowOverride.active;
+
+    if (inactiveWorkflowOverride || inactiveWorkflow) {
+      const message = workflowOverride ? 'Workflow is not active by workflow override' : 'Workflow is not active';
+      Logger.log(message, LOG_CONTEXT);
+
       return {
         acknowledged: true,
-        status: 'trigger_not_active',
+        status: TriggerEventStatusEnum.NOT_ACTIVE,
       };
     }
 
     if (!template.steps?.length) {
       return {
         acknowledged: true,
-        status: 'no_workflow_steps_defined',
+        status: TriggerEventStatusEnum.NO_WORKFLOW_STEPS,
       };
     }
 
     if (!template.steps?.some((step) => step.active)) {
       return {
         acknowledged: true,
-        status: 'no_workflow_active_steps_defined',
+        status: TriggerEventStatusEnum.NO_WORKFLOW_ACTIVE_STEPS,
       };
     }
 
@@ -97,53 +131,65 @@ export class ParseEventRequest {
 
     command.payload = merge({}, defaultPayload, command.payload);
 
-    await this.triggerHandlerQueueService.queue.add(
+    const jobData: IWorkflowDataDto = {
+      ...command,
+      actor: command.actor,
       transactionId,
-      {
-        ...command,
-        to: mappedRecipients,
-        actor: mappedActor,
-        transactionId,
-      },
-      {
-        removeOnComplete: true,
-        removeOnFail: true,
-      }
-    );
+    };
 
-    const steps = template.steps;
-
-    if (!command.payload.$on_boarding_trigger) {
-      this.analyticsService.track('Notification event trigger - [Triggers]', command.userId, {
-        _template: template._id,
-        _organization: command.organizationId,
-        channels: steps.map((step) => step.template?.type),
-      });
-    }
-
-    if (command.payload.$on_boarding_trigger && template.name.toLowerCase().includes('on-boarding')) {
-      return 'Your first notification was sent! Check your notification bell in the demo dashboard to Continue.';
-    }
+    await this.workflowQueueService.add({ name: transactionId, data: jobData, groupId: command.organizationId });
 
     return {
       acknowledged: true,
-      status: 'processed',
-      transactionId: transactionId,
+      status: TriggerEventStatusEnum.PROCESSED,
+      transactionId,
     };
   }
 
-  private async validateSubscriberIdProperty(to: ISubscribersDefine[]): Promise<boolean> {
-    for (const subscriber of to) {
-      const subscriberIdExists = typeof subscriber === 'string' ? subscriber : subscriber.subscriberId;
+  @Instrument()
+  @CachedEntity({
+    builder: (command: { triggerIdentifier: string; environmentId: string }) =>
+      buildNotificationTemplateIdentifierKey({
+        _environmentId: command.environmentId,
+        templateIdentifier: command.triggerIdentifier,
+      }),
+  })
+  private async getNotificationTemplateByTriggerIdentifier(command: {
+    triggerIdentifier: string;
+    environmentId: string;
+  }) {
+    return await this.notificationTemplateRepository.findByTriggerIdentifier(
+      command.environmentId,
+      command.triggerIdentifier
+    );
+  }
 
-      if (!subscriberIdExists) {
-        throw new ApiException(
-          'subscriberId under property to is not configured, please make sure all the subscriber contains subscriberId property'
-        );
+  @Instrument()
+  private validateTriggerContext(
+    command: ParseEventRequestCommand,
+    reservedVariablesTypes: TriggerContextTypeEnum[]
+  ): void {
+    const invalidKeys: string[] = [];
+
+    for (const reservedVariableType of reservedVariablesTypes) {
+      const payload = command[reservedVariableType];
+      if (!payload) {
+        invalidKeys.push(`${reservedVariableType} object`);
+        continue;
+      }
+      const reservedVariableFields = ReservedVariablesMap[reservedVariableType].map((variable) => variable.name);
+      for (const variableName of reservedVariableFields) {
+        const variableNameExists = payload[variableName];
+
+        if (!variableNameExists) {
+          invalidKeys.push(`${variableName} property of ${reservedVariableType}`);
+        }
       }
     }
 
-    return true;
+    if (invalidKeys.length) {
+      throw new ApiException(`Trigger is missing: ${invalidKeys.join(', ')}`);
+    }
   }
 
   private modifyAttachments(command: ParseEventRequestCommand) {
@@ -153,5 +199,11 @@ export class ParseEventRequest {
       file: Buffer.from(attachment.file, 'base64'),
       storagePath: `${command.organizationId}/${command.environmentId}/${hat()}/${attachment.name}`,
     }));
+  }
+
+  public getReservedVariablesTypes(template: NotificationTemplateEntity): TriggerContextTypeEnum[] {
+    const reservedVariables = template.triggers[0].reservedVariables;
+
+    return reservedVariables?.map((reservedVariable) => reservedVariable.type) || [];
   }
 }

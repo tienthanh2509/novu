@@ -4,9 +4,7 @@ import * as capitalize from 'lodash.capitalize';
 import { useClipboard } from '@mantine/hooks';
 import { MemberRoleEnum, MemberStatusEnum } from '@novu/shared';
 
-import { DotsHorizontal, Mail, Trash } from '../../../design-system/icons';
-import { colors, Dropdown, Tag } from '../../../design-system';
-import useStyles from '../../../design-system/config/text.styles';
+import { DotsHorizontal, Mail, Trash, useTextStyles, colors, Dropdown, Tag } from '@novu/design-system';
 import { MemberRole } from './MemberRole';
 import { When } from '../../../components/utils/When';
 import { parseUrl } from '../../../utils/routeUtils';
@@ -19,8 +17,9 @@ export function MembersTable({
   loading = false,
   onResendInviteMember,
   onChangeMemberRole,
+  allowChangeRole = false,
 }) {
-  const { classes, theme } = useStyles();
+  const { classes, theme } = useTextStyles();
   const clipboardInviteLink = useClipboard({ timeout: 1000 });
   const selfHosted = process.env.REACT_APP_DOCKER_HOSTED_ENV === 'true';
 
@@ -44,7 +43,7 @@ export function MembersTable({
   }
 
   return (
-    <Container fluid mt={15} style={{ position: 'relative', minHeight: 500 }}>
+    <Container fluid mt={15} style={{ position: 'relative', minHeight: 500 }} px={0}>
       <LoadingOverlay
         visible={loading}
         overlayColor={theme.colorScheme === 'dark' ? colors.B30 : colors.B98}
@@ -77,6 +76,7 @@ export function MembersTable({
                   onChangeMemberRole={onChangeMemberRole}
                   member={member}
                   isEnableMemberActions={isEnableMemberActions}
+                  allowChangeRole={allowChangeRole}
                 />
               </div>
             </ActionsSider>
@@ -88,6 +88,8 @@ export function MembersTable({
                       <DotsHorizontal />
                     </div>
                   }
+                  position="left"
+                  middlewares={{ flip: false, shift: false }}
                 >
                   <Dropdown.Item
                     key="removeBtn"

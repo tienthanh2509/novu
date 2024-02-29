@@ -2,23 +2,23 @@ import styled from '@emotion/styled';
 import { Controller, useFormContext } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { Grid } from '@mantine/core';
+import { Input, Switch, Text, CircleArrowRight } from '@novu/design-system';
 
-import { Input, Switch, Text } from '../../../design-system';
 import { useEnvController } from '../../../hooks';
 import { When } from '../../../components/utils/When';
-import { DoubleArrowRight } from '../../../design-system/icons/arrows/CircleArrowRight';
+import { useStepFormPath } from '../hooks/useStepFormPath';
 
-export const ReplyCallback = ({ control, index, errors }) => {
+export const ReplyCallback = () => {
+  const path = useStepFormPath();
   const { environment } = useEnvController();
   const { watch } = useFormContext();
-  const replyCallbackActive = watch(`steps.${index}.replyCallback.active`);
+  const replyCallbackActive = watch(`${path}.replyCallback.active`);
 
   const domainMxRecordConfigured =
     environment?.dns?.inboundParseDomain && environment?.dns?.mxRecordConfigured === true;
 
   return (
     <>
-      <ReplyCallbackSwitch index={index} control={control} />
       <When truthy={!domainMxRecordConfigured && replyCallbackActive}>
         <LackConfigurationError
           text={
@@ -28,25 +28,29 @@ export const ReplyCallback = ({ control, index, errors }) => {
           redirectTo={'/settings'}
         />
       </When>
-      <ReplyCallbackUrlInput index={index} control={control} />
+      <ReplyCallbackUrlInput />
     </>
   );
 };
 
-export const ReplyCallbackUrlInput = ({ control, index }) => {
+export const ReplyCallbackUrlInput = () => {
+  const { control } = useFormContext();
+  const path = useStepFormPath();
   const { readonly } = useEnvController();
   const { watch } = useFormContext();
-  const replyCallbackActive = watch(`steps.${index}.replyCallback.active`);
+  const replyCallbackActive = watch(`${path}.replyCallback.active`);
 
   return (
     <When truthy={replyCallbackActive}>
       <Controller
         control={control}
-        name={`steps.${index}.replyCallback.url`}
+        name={`${path}.replyCallback.url`}
         defaultValue=""
         render={({ field: { value, ...field } }) => {
           return (
             <Input
+              mb={24}
+              mt={24}
               {...field}
               data-test-id="reply-callback-url-input"
               disabled={readonly}
@@ -63,14 +67,16 @@ export const ReplyCallbackUrlInput = ({ control, index }) => {
   );
 };
 
-export const ReplyCallbackSwitch = ({ control, index }) => {
+export const ReplyCallbackSwitch = () => {
+  const { control } = useFormContext();
   const { readonly } = useEnvController();
+  const path = useStepFormPath();
 
   return (
     <>
       <Controller
         control={control}
-        name={`steps.${index}.replyCallback.active`}
+        name={`${path}.replyCallback.active`}
         defaultValue={false}
         render={({ field: { value, ...field } }) => {
           return (
@@ -93,13 +99,13 @@ export function LackConfigurationError({ text, redirectTo }: { text: string; red
 
   return (
     <>
-      <Grid align={'center'} m={0}>
+      <Grid align={'center'} mt={24}>
         <WarningMessage>
           <Grid.Col p={0} span={11}>
             <Text>{text}</Text>
           </Grid.Col>
           <Grid.Col p={0} span={'content'}>
-            <DoubleArrowRight onClick={() => navigate(redirectTo)} />
+            <CircleArrowRight onClick={() => navigate(redirectTo)} />
           </Grid.Col>
         </WarningMessage>
       </Grid>
@@ -116,8 +122,10 @@ const WarningMessage = styled.div`
   color: #e54545;
   background: rgba(230, 69, 69, 0.15);
   border-radius: 7px;
+  width: 100%;
 `;
 
 const StyledSwitch = styled(Switch)`
   max-width: 100% !important;
+  width: auto;
 `;

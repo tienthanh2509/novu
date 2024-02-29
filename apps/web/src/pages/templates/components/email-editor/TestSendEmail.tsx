@@ -1,36 +1,47 @@
 import { useEffect, useState } from 'react';
-import { JsonInput, MultiSelect, Group, ActionIcon } from '@mantine/core';
+import { JsonInput, MultiSelect, ActionIcon } from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useFormContext, useWatch } from 'react-hook-form';
 import styled from '@emotion/styled';
 import { ChannelTypeEnum, MemberStatusEnum } from '@novu/shared';
 
-import { Button, Text, colors, Tooltip } from '../../../../design-system';
 import { errorMessage, successMessage } from '../../../../utils/notifications';
 import { useAuthContext } from '../../../../components/providers/AuthProvider';
-import { ArrowDown, Check, Copy, Invite } from '../../../../design-system/icons';
-import { inputStyles } from '../../../../design-system/config/inputs.styles';
-import useStyles from '../../../../design-system/select/Select.styles';
+import {
+  Button,
+  Text,
+  colors,
+  Tooltip,
+  ArrowDown,
+  Check,
+  Copy,
+  Invite,
+  inputStyles,
+  useSelectStyles,
+} from '@novu/design-system';
 import { getOrganizationMembers } from '../../../../api/organization';
 import { useProcessVariables, useIntegrationLimit } from '../../../../hooks';
 import { testSendEmailMessage } from '../../../../api/notification-templates';
+import { useStepFormPath } from '../../hooks/useStepFormPath';
+import type { IForm } from '../formTypes';
 
-export function TestSendEmail({ index, isIntegrationActive }: { index: number; isIntegrationActive: boolean }) {
+export function TestSendEmail({ isIntegrationActive }: { isIntegrationActive: boolean }) {
   const { currentUser } = useAuthContext();
-  const { control } = useFormContext();
+  const { control } = useFormContext<IForm>();
+  const path = useStepFormPath();
 
   const clipboardJson = useClipboard({ timeout: 1000 });
-  const { classes } = useStyles();
+  const { classes } = useSelectStyles();
 
   const { mutateAsync: testSendEmailEvent, isLoading } = useMutation(testSendEmailMessage);
   const template = useWatch({
-    name: `steps.${index}.template`,
+    name: `${path}.template`,
     control,
   });
 
   const { data: organizationMembers } = useQuery<any[]>(['getOrganizationMembers'], getOrganizationMembers);
-  const { enabled } = useIntegrationLimit(ChannelTypeEnum.EMAIL);
+  const { isLimitFetchingEnabled } = useIntegrationLimit(ChannelTypeEnum.EMAIL);
 
   const [sendTo, setSendTo] = useState<string[]>(currentUser?.email ? [currentUser?.email] : []);
   const [membersEmails, setMembersEmails] = useState<string[]>([currentUser?.email || '']);
@@ -71,8 +82,8 @@ export function TestSendEmail({ index, isIntegrationActive }: { index: number; i
   };
 
   return (
-    <div style={{ maxWidth: '800px', margin: 'auto', padding: '20px 25px' }}>
-      <Text my={30} color={colors.B60}>
+    <div>
+      <Text mb={30} color={colors.B60}>
         Fill in the required variables and send a test to your desired address.
       </Text>
 
@@ -103,43 +114,50 @@ export function TestSendEmail({ index, isIntegrationActive }: { index: number; i
         />
       </Wrapper>
 
-      <JsonInput
-        data-test-id="test-email-json-param"
-        formatOnBlur
-        mt={20}
-        autosize
-        styles={inputStyles}
-        label="Variables"
-        value={payloadValue}
-        onChange={setPayloadValue}
-        minRows={6}
-        mb={15}
-        validationError="Invalid JSON"
-        rightSectionWidth={50}
-        rightSectionProps={{ style: { alignItems: 'start', padding: '5px' } }}
-        rightSection={
-          <Tooltip label={clipboardJson.copied ? 'Copied!' : 'Copy Json'}>
-            <ActionIcon variant="transparent" onClick={() => clipboardJson.copy(payloadValue)}>
-              {clipboardJson.copied ? <Check /> : <Copy />}
-            </ActionIcon>
-          </Tooltip>
-        }
-      />
+      <div style={{ position: 'relative' }}>
+        <JsonInput
+          data-test-id="test-email-json-param"
+          formatOnBlur
+          mt={20}
+          autosize
+          styles={inputStyles}
+          label="Variables"
+          value={payloadValue}
+          onChange={setPayloadValue}
+          minRows={12}
+          validationError="Invalid JSON"
+          rightSectionWidth={50}
+          rightSectionProps={{ style: { alignItems: 'start', padding: '5px' } }}
+          rightSection={
+            <Tooltip label={clipboardJson.copied ? 'Copied!' : 'Copy Json'}>
+              <ActionIcon variant="transparent" onClick={() => clipboardJson.copy(payloadValue)}>
+                {clipboardJson.copied ? <Check /> : <Copy />}
+              </ActionIcon>
+            </Tooltip>
+          }
+        />
 
-      <Group mt={30}>
-        <Button
-          loading={isLoading}
-          icon={<Invite />}
-          data-test-id="test-send-email-btn"
-          disabled={!isIntegrationActive && !enabled}
-          onClick={() => onTestEmail()}
+        <span
+          style={{
+            position: 'absolute',
+            bottom: 16,
+            right: 16,
+          }}
         >
-          Send Test Email
-        </Button>
-        {!isIntegrationActive && (
-          <Text color={colors.error}>{`* Looks like you haven’t configured your email provider yet`}</Text>
-        )}
-      </Group>
+          <Button
+            loading={isLoading}
+            icon={<Invite />}
+            data-test-id="test-send-email-btn"
+            disabled={!isIntegrationActive && !isLimitFetchingEnabled}
+            onClick={() => onTestEmail()}
+          >
+            Send Test Email
+          </Button>
+        </span>
+      </div>
+      {!isIntegrationActive && (
+        <Text color={colors.error}>* Looks like you haven’t configured your email provider yet</Text>
+      )}
     </div>
   );
 }

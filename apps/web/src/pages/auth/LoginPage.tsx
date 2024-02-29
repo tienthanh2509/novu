@@ -56,7 +56,7 @@ export default function LoginPage() {
           source: 'cli',
         });
         setToken(token);
-        navigate(ROUTES.QUICKSTART);
+        navigate(ROUTES.GET_STARTED);
 
         return;
       }
@@ -70,6 +70,7 @@ export default function LoginPage() {
       setToken(token);
       navigate('/');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   return (

@@ -1,16 +1,19 @@
 import { Modal, useMantineTheme } from '@mantine/core';
-import { colors, shadows, Title, Text, Button } from '../../../design-system';
 import { Center, Loader } from '@mantine/core';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import type { IResponseError, IUserEntity } from '@novu/shared';
+import { colors, shadows, Title, Text, Button } from '@novu/design-system';
+
 import { updateUserOnBoarding } from '../../../api/user';
-import { IUserEntity } from '@novu/shared';
-import { createTemplateFromBluePrintId, getBlueprintTemplateById } from '../../../api/notification-templates';
-import { ActivePageEnum } from '../editor/TemplateEditorPage';
+import { getBlueprintTemplateById } from '../../../api/notification-templates';
 import { errorMessage } from '../../../utils/notifications';
 import { When } from '../../../components/utils/When';
 import { useSegment } from '../../../components/providers/SegmentProvider';
+import { useCreateTemplateFromBlueprint } from '../../../api/hooks';
+import { TemplateCreationSourceEnum } from '../shared';
+import { ROUTES } from '../../../constants/routes.enum';
 
 export function BlueprintModal() {
   const theme = useMantineTheme();
@@ -20,28 +23,26 @@ export function BlueprintModal() {
     segment.track('Blueprint canceled', {
       blueprintId: localStorage.getItem('blueprintId'),
     });
-    localStorage.removeItem('blueprintId');
-    navigate('/templates', {
+    navigate(ROUTES.WORKFLOWS, {
       replace: true,
     });
+    localStorage.removeItem('blueprintId');
   };
 
-  const { mutateAsync: updateOnBoardingStatus } = useMutation<
-    IUserEntity,
-    { error: string; message: string; statusCode: number },
-    { showOnBoarding: boolean }
-  >(({ showOnBoarding }) => updateUserOnBoarding(showOnBoarding));
+  const { mutateAsync: updateOnBoardingStatus } = useMutation<IUserEntity, IResponseError, { showOnBoarding: boolean }>(
+    ({ showOnBoarding }) => updateUserOnBoarding(showOnBoarding)
+  );
 
   async function disableOnboarding() {
     await updateOnBoardingStatus({ showOnBoarding: false });
   }
 
   const [blueprintId, setBluePrintId] = useState<undefined | string>();
+  const id = localStorage.getItem('blueprintId');
 
   useEffect(() => {
-    const id = localStorage.getItem('blueprintId');
     setBluePrintId(id === null ? undefined : id);
-  }, [localStorage.getItem('blueprintId')]);
+  }, [id]);
 
   const { data: blueprint, isInitialLoading: isBluePrintLoading } = useQuery(
     ['blueprint', blueprintId],
@@ -52,15 +53,15 @@ export function BlueprintModal() {
     }
   );
 
-  const { mutate, isLoading: isCreating } = useMutation(createTemplateFromBluePrintId, {
+  const { createTemplateFromBlueprint, isLoading: isCreating } = useCreateTemplateFromBlueprint({
     onSuccess: (template) => {
-      localStorage.removeItem('blueprintId');
       if (template) {
         disableOnboarding();
-        navigate(`/templates/edit/${template?._id}?page=${ActivePageEnum.WORKFLOW}`, {
+        navigate(`/workflows/edit/${template?._id}`, {
           replace: true,
         });
       }
+      localStorage.removeItem('blueprintId');
     },
     onError: (err: any) => {
       if (err?.message) {
@@ -113,13 +114,16 @@ export function BlueprintModal() {
             {blueprint?.name}:
           </Text>
           <Text data-test-id="blueprint-description" mb={16}>
-            {blueprint?.description}
+            {blueprint?.description ?? ''}
           </Text>
           <Button
             data-test-id="create-from-blueprint"
             onClick={() => {
-              if (blueprintId) {
-                mutate(blueprintId);
+              if (blueprint) {
+                createTemplateFromBlueprint({
+                  blueprint,
+                  params: { __source: TemplateCreationSourceEnum.NOTIFICATION_DIRECTORY },
+                });
               }
             }}
           >

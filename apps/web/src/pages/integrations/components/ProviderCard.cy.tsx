@@ -1,12 +1,12 @@
 import { TestWrapper } from '../../../testing';
 import { ProviderCard } from './ProviderCard';
-import { ChannelTypeEnum, CredentialsKeyEnum } from '@novu/shared';
+import { ChannelTypeEnum, CredentialsKeyEnum, EmailProviderIdEnum } from '@novu/shared';
 import { ColorSchemeProvider } from '@mantine/core';
 
 const providerCardTestId = 'integration-provider-card-sendgrid';
 
 const provider = {
-  providerId: 'sendgrid',
+  providerId: EmailProviderIdEnum.SendGrid,
   integrationId: 'integration.id',
   displayName: 'providerItem.displayName',
   channel: ChannelTypeEnum.EMAIL,
@@ -30,6 +30,7 @@ const provider = {
   active: false,
   connected: false,
   logoFileName: { light: 'examplelight.svg', dark: 'exampledark.svg' },
+  primary: false,
 };
 
 it('should change the image based on the colorScheme (light) selected by user', () => {

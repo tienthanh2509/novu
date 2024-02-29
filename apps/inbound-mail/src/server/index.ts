@@ -1,23 +1,28 @@
 import { MailParser } from 'mailparser';
 import * as _ from 'lodash';
 import * as Promise from 'bluebird';
-import * as htmlToText from 'html-to-text';
+import { convert } from 'html-to-text';
 import * as events from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as shell from 'shelljs';
 import * as util from 'util';
 import { SMTPServer } from 'smtp-server';
-import * as uuid from 'node-uuid';
+import * as uuid from 'uuid';
 import * as dns from 'dns';
-import logger from './logger';
 import * as extend from 'extend';
-import { QueueService } from './queue-service';
+import { BullMqService } from '@novu/application-generic';
+
+import { InboundMailService } from './inbound-mail.service';
+import logger from './logger';
+
+const LOG_CONTEXT = 'Mailin';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 const LanguageDetect = require('languagedetect');
 const mailUtilities = Promise.promisifyAll(require('./mailUtilities'));
-const queueService = new QueueService();
+const inboundMailService = new InboundMailService();
+BullMqService.haveProInstalled();
 
 class Mailin extends events.EventEmitter {
   public configuration: IConfiguration;
@@ -26,8 +31,9 @@ class Mailin extends events.EventEmitter {
 
   constructor() {
     super();
+
     this.configuration = {
-      host: '0.0.0.0',
+      host: '127.0.0.1',
       port: 2500,
       tmp: '.tmp',
       disableWebhook: true,
@@ -48,15 +54,9 @@ class Mailin extends events.EventEmitter {
     this._smtp = null;
   }
 
-  public start(options: any, callback: (err?) => void) {
+  public async start(options: object, callback: (err?) => void) {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const _this = this;
-
-    options = options || {};
-    if (_.isFunction(options)) {
-      callback = options;
-      options = {};
-    }
 
     const configuration = this.configuration;
     extend(true, configuration, options);
@@ -76,26 +76,13 @@ class Mailin extends events.EventEmitter {
       shell.mkdir('-p', configuration.tmp);
     }
 
-    /* Set log level if necessary. */
-    if (configuration.logLevel) {
-      logger.setLevel(configuration.logLevel);
-    }
-
-    if (configuration.verbose) {
-      logger.setLevel('verbose');
-      logger.info('Log level set to verbose.');
-    }
-
     if (configuration.debug) {
-      logger.info('Debug option activated.');
-      logger.setLevel('debug');
-
       configuration.smtpOptions.debug = true;
     }
 
     /* Basic memory profiling. */
     if (configuration.profile) {
-      logger.info('Enable memory profiling');
+      logger.info('Enable memory profiling', LOG_CONTEXT);
       setInterval(function () {
         const memoryUsage = process.memoryUsage();
         const ram = memoryUsage.rss + memoryUsage.heapUsed;
@@ -108,7 +95,8 @@ class Mailin extends events.EventEmitter {
             'mb | heapTotal: ' +
             memoryUsage.heapTotal / million +
             'mb | heapUsed: ' +
-            memoryUsage.heapUsed / million
+            memoryUsage.heapUsed / million,
+          LOG_CONTEXT
         );
       }, 500);
     }
@@ -187,7 +175,7 @@ class Mailin extends events.EventEmitter {
     }
 
     function dataReady(connection) {
-      logger.info(connection.id + ' Processing message from ' + connection.envelope.mailFrom.address);
+      logger.info(connection.id + ' Processing message from ' + connection.envelope.mailFrom.address, LOG_CONTEXT);
 
       return retrieveRawEmail(connection)
         .then(function (rawEmail) {
@@ -218,7 +206,7 @@ class Mailin extends events.EventEmitter {
         .then(postQueue.bind(null, connection))
         .then(unlinkFile.bind(null, connection))
         .catch(function (error) {
-          logger.error(connection.id + ' Unable to finish processing message!!', error);
+          logger.error(connection.id + ' Unable to finish processing message!!', LOG_CONTEXT);
           logger.error(error);
           throw error;
         });
@@ -235,10 +223,10 @@ class Mailin extends events.EventEmitter {
         return Promise.resolve(false);
       }
 
-      logger.verbose(connection.id + ' Validating dkim.');
+      logger.verbose(connection.id + ' Validating dkim.', LOG_CONTEXT);
 
       return mailUtilities.validateDkimAsync(rawEmail).catch(function (err) {
-        logger.error(connection.id + ' Unable to validate dkim. Consider dkim as failed.');
+        logger.error(connection.id + ' Unable to validate dkim. Consider dkim as failed.', LOG_CONTEXT);
         logger.error(err);
 
         return false;
@@ -250,13 +238,13 @@ class Mailin extends events.EventEmitter {
         return Promise.resolve(false);
       }
 
-      logger.verbose(connection.id + ' Validating spf.');
+      logger.verbose(connection.id + ' Validating spf.', LOG_CONTEXT);
 
       /* Get ip and host. */
       return mailUtilities
         .validateSpfAsync(connection.remoteAddress, connection.from, connection.clientHostname)
         .catch(function (err) {
-          logger.error(connection.id + ' Unable to validate spf. Consider spf as failed.');
+          logger.error(connection.id + ' Unable to validate spf. Consider spf as failed.', LOG_CONTEXT);
           logger.error(err);
 
           return false;
@@ -269,7 +257,7 @@ class Mailin extends events.EventEmitter {
       }
 
       return mailUtilities.computeSpamScoreAsync(rawEmail).catch(function (err) {
-        logger.error(connection.id + ' Unable to compute spam score. Set spam score to 0.');
+        logger.error(connection.id + ' Unable to compute spam score. Set spam score to 0.', LOG_CONTEXT);
         logger.error(err);
 
         return 0.0;
@@ -278,7 +266,7 @@ class Mailin extends events.EventEmitter {
 
     function parseEmail(connection) {
       return new Promise(function (resolve) {
-        logger.verbose(connection.id + ' Parsing email.');
+        logger.verbose(connection.id + ' Parsing email.', LOG_CONTEXT);
 
         /* Prepare the mail parser. */
         const mailParser = new MailParser();
@@ -312,7 +300,7 @@ class Mailin extends events.EventEmitter {
     }
 
     function detectLanguage(connection, text) {
-      logger.verbose(connection.id + ' Detecting language.');
+      logger.verbose(connection.id + ' Detecting language.', LOG_CONTEXT);
 
       let language = '';
 
@@ -323,7 +311,8 @@ class Mailin extends events.EventEmitter {
           'Potential languages: ' +
             util.inspect(potentialLanguages, {
               depth: 5,
-            })
+            }),
+          LOG_CONTEXT
         );
 
         /*
@@ -332,7 +321,7 @@ class Mailin extends events.EventEmitter {
          */
         language = potentialLanguages[0][0];
       } else {
-        logger.info(connection.id + ' Unable to detect language for the current message.');
+        logger.info(connection.id + ' Unable to detect language for the current message.', LOG_CONTEXT);
       }
 
       return language;
@@ -366,11 +355,19 @@ class Mailin extends events.EventEmitter {
 
     function postQueue(connection, finalizedMessage) {
       return new Promise(function (resolve) {
-        logger.info(connection.id + ' Adding mail to queue ');
+        logger.debug(connection.id + ' finalized message is: ' + finalizedMessage, LOG_CONTEXT);
 
-        queueService.queue.add(finalizedMessage.messageId, finalizedMessage, {
-          removeOnComplete: true,
-          removeOnFail: true,
+        logger.info(connection.id + ' Adding mail to queue ', LOG_CONTEXT);
+
+        const toAddress = getAddressTo(finalizedMessage);
+        const parts: string[] = toAddress.split('@');
+        const username: string = parts[0];
+        const environmentId = username.split('-nv-e=').at(-1);
+
+        inboundMailService.inboundParseQueueService.add({
+          name: finalizedMessage.messageId,
+          data: finalizedMessage,
+          groupId: environmentId,
         });
 
         return resolve();
@@ -379,7 +376,7 @@ class Mailin extends events.EventEmitter {
     function unlinkFile(connection) {
       /* Don't forget to unlink the tmp file. */
       return fs.promises.unlink(connection.mailPath).then(function () {
-        logger.info(connection.id + ' End processing message, deleted ' + connection.mailPath);
+        logger.info(connection.id + ' End processing message, deleted ' + connection.mailPath, LOG_CONTEXT);
 
         return;
       });
@@ -396,8 +393,8 @@ class Mailin extends events.EventEmitter {
         connection.mailPath = mailPath;
 
         _this.emit('startData', connection);
-        logger.verbose('Connection id ' + connection.id);
-        logger.info(connection.id + ' Receiving message from ' + connection.envelope.mailFrom.address);
+        logger.verbose('Connection id ' + connection.id, LOG_CONTEXT);
+        logger.info(connection.id + ' Receiving message from ' + connection.envelope.mailFrom.address, LOG_CONTEXT);
 
         _this.emit('startMessage', connection);
 
@@ -419,8 +416,9 @@ class Mailin extends events.EventEmitter {
         stream.on('error', function (error) {
           _this.emit('error', connection, error);
         });
-      } catch (e) {
-        logger.error('Exception occurred while performing onData callback', e);
+      } catch (error) {
+        logger.error('Exception occurred while performing onData callback', LOG_CONTEXT);
+        logger.error(error);
       }
     }
 
@@ -453,25 +451,28 @@ class Mailin extends events.EventEmitter {
       onRcptTo: onRcptTo,
     });
 
+    await inboundMailService.start();
+
     const server = new SMTPServer(smtpOptions);
 
     this._smtp = server;
 
     server.listen(configuration.port, configuration.host, function () {
-      logger.info('Mailin Smtp server listening on port ' + configuration.port);
+      logger.info('Mailin Smtp server listening on port ' + configuration.port, LOG_CONTEXT);
     });
 
     server.on('close', function () {
-      logger.info('Closing smtp server');
+      logger.info('Closing smtp server', LOG_CONTEXT);
       _this.emit('close', _session);
     });
 
     server.on('error', function (error) {
       callback(error);
       if (configuration.port < 1000) {
-        logger.error('Ports under 1000 require root privileges.');
+        logger.error('Ports under 1000 require root privileges.', LOG_CONTEXT);
       }
 
+      logger.error('Server errored', LOG_CONTEXT);
       logger.error(error);
       _this.emit('error', _session, error);
     });
@@ -481,7 +482,7 @@ class Mailin extends events.EventEmitter {
 
   public stop(callback: () => void) {
     callback = callback || function () {};
-    logger.info('Stopping mailin.');
+    logger.info('Stopping mailin.', LOG_CONTEXT);
 
     /*
      * FIXME A bug in the RAI module prevents the callback to be called, so
@@ -503,10 +504,17 @@ class Mailin extends events.EventEmitter {
   }
 
   public _convertHtmlToText(html) {
-    return htmlToText.fromString(html);
+    return convert(html);
   }
 }
 
+function getAddressTo(finalizedMessage) {
+  const toAddressObject = Array.isArray(finalizedMessage.envelopeTo)
+    ? finalizedMessage.envelopeTo[0]
+    : finalizedMessage.envelopeTo;
+
+  return toAddressObject.address ?? toAddressObject;
+}
 interface ISmtpOptions {
   banner: string;
   logger: boolean;

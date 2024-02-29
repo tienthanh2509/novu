@@ -4,6 +4,9 @@ name: Deploy Service Job
 on:
   workflow_call:
     inputs:
+      environment:
+        required: true
+        type: string
       terraform_workspace:
         required: true
         type: string
@@ -26,13 +29,14 @@ jobs:
   deploy_service:
     runs-on: ubuntu-latest
     timeout-minutes: 80
-    environment: Production
+    environment: ${{ inputs.environment }}
     env:
       TF_WORKSPACE: ${{ inputs.terraform_workspace }}
     permissions:
       contents: read
       deployments: write
     steps:
+      - run: echo "Deploying ${{ inputs.service_name }} to ${{ inputs.terraform_workspace }} And Docker Tag ${{ inputs.docker_image }}"
       - name: Checkout cloud infra
         uses: actions/checkout@master
         with:
@@ -44,15 +48,15 @@ jobs:
         uses: hashicorp/setup-terraform@v1
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
-          terraform_version: 1.3.4
+          terraform_version: 1.5.5
           terraform_wrapper: false
 
       - name: Terraform Init
-        working-directory: cloud-infra/terraform
+        working-directory: cloud-infra/terraform/novu/aws
         run: terraform init
 
       - name: Terraform get output
-        working-directory: cloud-infra/terraform
+        working-directory: cloud-infra/terraform/novu/aws
         id: terraform
         env:
           SERVICE_NAME: ${{ inputs.service_name }}

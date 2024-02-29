@@ -1,27 +1,49 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { MessageEntity, MessageRepository, SubscriberRepository, SubscriberEntity, MemberRepository } from '@novu/dal';
-import { ChannelTypeEnum } from '@novu/shared';
-import { AnalyticsService } from '@novu/application-generic';
+import { ChannelTypeEnum, WebSocketEventEnum } from '@novu/shared';
+import {
+  WebSocketsQueueService,
+  AnalyticsService,
+  InvalidateCacheService,
+  CachedEntity,
+  buildFeedKey,
+  buildMessageCountKey,
+  buildSubscriberKey,
+} from '@novu/application-generic';
 
-import { CacheKeyPrefixEnum } from '../../../shared/services/cache';
-import { QueueService } from '../../../shared/services/queue';
-import { ANALYTICS_SERVICE } from '../../../shared/shared.module';
 import { MarkEnum, MarkMessageAsCommand } from './mark-message-as.command';
-import { InvalidateCache } from '../../../shared/interceptors';
 
 @Injectable()
 export class MarkMessageAs {
   constructor(
+    private invalidateCache: InvalidateCacheService,
     private messageRepository: MessageRepository,
-    private queueService: QueueService,
-    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService,
+    private webSocketsQueueService: WebSocketsQueueService,
+    private analyticsService: AnalyticsService,
     private subscriberRepository: SubscriberRepository,
     private memberRepository: MemberRepository
   ) {}
 
-  @InvalidateCache([CacheKeyPrefixEnum.MESSAGE_COUNT, CacheKeyPrefixEnum.FEED])
   async execute(command: MarkMessageAsCommand): Promise<MessageEntity[]> {
-    const subscriber = await this.subscriberRepository.findBySubscriberId(command.environmentId, command.subscriberId);
+    await this.invalidateCache.invalidateQuery({
+      key: buildFeedKey().invalidate({
+        subscriberId: command.subscriberId,
+        _environmentId: command.environmentId,
+      }),
+    });
+
+    await this.invalidateCache.invalidateQuery({
+      key: buildMessageCountKey().invalidate({
+        subscriberId: command.subscriberId,
+        _environmentId: command.environmentId,
+      }),
+    });
+
+    const subscriber = await this.fetchSubscriber({
+      _environmentId: command.environmentId,
+      subscriberId: command.subscriberId,
+    });
+
     if (!subscriber) throw new NotFoundException(`Subscriber ${command.subscriberId} not found`);
 
     await this.messageRepository.changeStatus(command.environmentId, subscriber._id, command.messageIds, command.mark);
@@ -44,35 +66,45 @@ export class MarkMessageAs {
     return messages;
   }
 
-  private async updateServices(command: MarkMessageAsCommand, subscriber, messages, marked: string) {
-    const admin = await this.memberRepository.getOrganizationAdminAccount(command.organizationId);
-    const count = await this.messageRepository.getCount(command.environmentId, subscriber._id, ChannelTypeEnum.IN_APP, {
-      [marked]: false,
-    });
-
-    this.updateSocketCount(subscriber, count, marked);
+  private async updateServices(command: MarkMessageAsCommand, subscriber, messages, marked: MarkEnum) {
+    this.updateSocketCount(subscriber, marked);
 
     for (const message of messages) {
-      if (admin) {
-        this.analyticsService.track(`Mark as ${marked} - [Notification Center]`, admin._userId, {
-          _subscriber: message._subscriberId,
-          _organization: command.organizationId,
-          _template: message._templateId,
-        });
-      }
+      this.analyticsService.mixpanelTrack(`Mark as ${marked} - [Notification Center]`, '', {
+        _subscriber: message._subscriberId,
+        _organization: command.organizationId,
+        _template: message._templateId,
+      });
     }
   }
 
-  private updateSocketCount(subscriber: SubscriberEntity, count: number, mark: string) {
-    const eventMessage = `un${mark}_count_changed`;
-    const countKey = `un${mark}Count`;
+  private updateSocketCount(subscriber: SubscriberEntity, mark: MarkEnum) {
+    const eventMessage = mark === MarkEnum.READ ? WebSocketEventEnum.UNREAD : WebSocketEventEnum.UNSEEN;
 
-    this.queueService.wsSocketQueue.add({
-      event: eventMessage,
-      userId: subscriber._id,
-      payload: {
-        [countKey]: count,
+    this.webSocketsQueueService.add({
+      name: 'sendMessage',
+      data: {
+        event: eventMessage,
+        userId: subscriber._id,
+        _environmentId: subscriber._environmentId,
       },
+      groupId: subscriber._organizationId,
     });
+  }
+  @CachedEntity({
+    builder: (command: { subscriberId: string; _environmentId: string }) =>
+      buildSubscriberKey({
+        _environmentId: command._environmentId,
+        subscriberId: command.subscriberId,
+      }),
+  })
+  private async fetchSubscriber({
+    subscriberId,
+    _environmentId,
+  }: {
+    subscriberId: string;
+    _environmentId: string;
+  }): Promise<SubscriberEntity | null> {
+    return await this.subscriberRepository.findBySubscriberId(_environmentId, subscriberId);
   }
 }

@@ -1,24 +1,61 @@
-import { useQuery } from '@tanstack/react-query';
-import { INotificationTemplate } from '@novu/shared';
+import { INotificationTemplate, WorkflowIntegrationStatus } from '@novu/shared';
+import { IUsePaginationStateOptions } from '@novu/design-system';
 
-import { useEnvController } from '../hooks';
+import { useEnvController } from './useEnvController';
 import { getNotificationsList } from '../api/notification-templates';
+import { usePaginatedQuery } from './usePaginatedQuery';
 
-export function useTemplates(page = 0, limit = 10) {
+export type INotificationTemplateExtended = INotificationTemplate & {
+  id: string;
+  status: string;
+  notificationGroup: { name: string };
+  workflowIntegrationStatus?: WorkflowIntegrationStatus;
+};
+
+/** allow override of paginated inputs */
+export function useTemplates({
+  pageIndex,
+  pageSize,
+  areSearchParamsEnabled = false,
+}: {
+  pageIndex?: IUsePaginationStateOptions['startingPageNumber'];
+  pageSize?: IUsePaginationStateOptions['startingPageSize'];
+} & Pick<IUsePaginationStateOptions, 'areSearchParamsEnabled'> = {}) {
   const { environment } = useEnvController();
-  const { data, isLoading, refetch } = useQuery<{
-    data: INotificationTemplate[];
+
+  const {
+    data,
+    isLoading,
+    totalItemCount = 0,
+    totalPageCount = 0,
+    ...paginatedQueryResp
+  } = usePaginatedQuery<{
+    data: INotificationTemplateExtended[];
     totalCount: number;
     pageSize: number;
-  }>(['notificationsList', environment?._id, page, limit], () => getNotificationsList(page, limit), {
-    keepPreviousData: true,
+  }>({
+    queryKey: ['notification-templates', environment?._id],
+    buildQueryFn:
+      ({ pageIndex: ctxPageIndex, pageSize: ctxPageSize }) =>
+      () =>
+        getNotificationsList(ctxPageIndex, ctxPageSize),
+    getTotalItemCount: (resp) => resp.totalCount,
+    queryOptions: {
+      keepPreviousData: true,
+    },
+    paginationOptions: {
+      areSearchParamsEnabled,
+      startingPageNumber: (pageIndex ?? 0) + 1,
+      startingPageSize: pageSize,
+    },
   });
 
   return {
+    ...paginatedQueryResp,
     templates: data?.data,
     loading: isLoading,
     totalCount: data?.totalCount,
-    pageSize: data?.pageSize,
-    refetch,
+    totalItemCount,
+    totalPageCount,
   };
 }

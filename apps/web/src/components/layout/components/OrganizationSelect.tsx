@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as capitalize from 'lodash.capitalize';
 import styled from '@emotion/styled';
-import { IOrganizationEntity } from '@novu/shared';
+import type { IResponseError, IOrganizationEntity } from '@novu/shared';
 
-import { Select } from '../../../design-system';
+import { Select } from '@novu/design-system';
 import { addOrganization, switchOrganization } from '../../../api/organization';
 import { useAuthContext } from '../../providers/AuthProvider';
 import { useSpotlightContext } from '../../providers/SpotlightProvider';
@@ -13,63 +13,70 @@ export default function OrganizationSelect() {
   const [value, setValue] = useState<string>('');
   const [search, setSearch] = useState<string>('');
   const [loadingSwitch, setLoadingSwitch] = useState<boolean>(false);
-  const { addItem, removeItem } = useSpotlightContext();
+  const { addItem, removeItems } = useSpotlightContext();
 
   const queryClient = useQueryClient();
   const { currentOrganization, organizations, setToken } = useAuthContext();
 
   const { isLoading: loadingAddOrganization, mutateAsync: createOrganization } = useMutation<
     IOrganizationEntity,
-    { error: string; message: string; statusCode: number },
+    IResponseError,
     string
   >((name) => addOrganization(name));
 
-  const { mutateAsync: changeOrganization } = useMutation<
-    string,
-    { error: string; message: string; statusCode: number },
-    string
-  >((name) => switchOrganization(name));
+  const { mutateAsync: changeOrganization } = useMutation<string, IResponseError, string>((id) =>
+    switchOrganization(id)
+  );
+
+  const switchOrgCallback = useCallback(
+    async (organizationId: string | string[] | null) => {
+      if (
+        Array.isArray(organizationId) ||
+        !organizationId ||
+        organizationId === currentOrganization?._id ||
+        organizationId === search
+      ) {
+        return;
+      }
+
+      setLoadingSwitch(true);
+      const token = await changeOrganization(organizationId);
+      setToken(token);
+      await queryClient.refetchQueries();
+      setLoadingSwitch(false);
+    },
+    [currentOrganization, search, setToken, changeOrganization, queryClient]
+  );
 
   function addOrganizationItem(newOrganization: string): undefined {
     if (!newOrganization) return;
 
     createOrganization(newOrganization).then((response) => {
-      return switchOrg(response._id);
+      return switchOrgCallback(response._id);
     });
   }
 
-  async function switchOrg(organizationId: string | string[] | null) {
-    if (!organizationId || organizationId === currentOrganization?._id || organizationId === search) {
-      return;
-    }
-
-    setLoadingSwitch(true);
-
-    const token = await changeOrganization(organizationId as string);
-    setToken(token);
-    await queryClient.refetchQueries();
-
-    setLoadingSwitch(false);
-  }
+  const organizationItems = useMemo(() => {
+    return (organizations || [])
+      .filter((item) => item._id !== value)
+      .map((item) => ({
+        id: 'change-org-' + item._id,
+        title: 'Change org to ' + capitalize(item.name),
+        onTrigger: () => {
+          switchOrgCallback(item._id);
+        },
+      }));
+  }, [organizations, value, switchOrgCallback]);
 
   useEffect(() => {
     setValue(currentOrganization?._id || '');
   }, [currentOrganization]);
 
   useEffect(() => {
-    addItem(
-      (organizations || [])
-        .filter((item) => item._id !== value)
-        .map((item) => ({
-          id: 'change-org-' + item._id,
-          title: 'Change org to ' + capitalize(item.name),
-          onTrigger: () => {
-            switchOrg(item._id);
-          },
-        }))
-    );
-    removeItem('change-org-' + value);
-  }, [value]);
+    removeItems(['change-org-' + value]);
+
+    addItem(organizationItems);
+  }, [addItem, removeItems, organizationItems, value]);
 
   return (
     <>
@@ -82,7 +89,7 @@ export default function OrganizationSelect() {
           getCreateLabel={(newOrganization) => <div>+ Add "{newOrganization}"</div>}
           onCreate={addOrganizationItem}
           value={value}
-          onChange={switchOrg}
+          onChange={switchOrgCallback}
           allowDeselect={false}
           onSearchChange={setSearch}
           data={(organizations || []).map((item) => ({
@@ -96,6 +103,8 @@ export default function OrganizationSelect() {
 }
 
 const SelectWrapper = styled.div`
+  margin-top: 16px;
+
   input {
     background: transparent;
   }

@@ -1,28 +1,39 @@
+import { useEffect } from 'react';
+import { ActionIcon, Center, Input as MantineInput } from '@mantine/core';
+import { Control, Controller, useForm } from 'react-hook-form';
 import { useClipboard } from '@mantine/hooks';
 import styled from '@emotion/styled';
-import { inputStyles } from '../../../design-system/config/inputs.styles';
-import Card from '../../../components/layout/components/Card';
-import { ActionIcon, Center, Input as MantineInput } from '@mantine/core';
-import { colors, Text, Input, Tooltip, Button } from '../../../design-system';
-import { Check, CheckCircle, Copy } from '../../../design-system/icons';
-import React, { useEffect } from 'react';
-import { Control, Controller, useForm } from 'react-hook-form';
-import { useEnvController } from '../../../hooks';
 import { useMutation } from '@tanstack/react-query';
-import { updateDnsSettings } from '../../../api/environment';
 import { showNotification } from '@mantine/notifications';
-import { WarningIcon } from '../../../design-system/icons/general/WarningIcon';
+import {
+  colors,
+  Text,
+  Input,
+  Tooltip,
+  Button,
+  Check,
+  CheckCircle,
+  Copy,
+  WarningIcon,
+  inputStyles,
+} from '@novu/design-system';
+import type { IResponseError } from '@novu/shared';
+
+import Card from '../../../components/layout/components/Card';
+import { useEffectOnce, useEnvController } from '../../../hooks';
+import { updateDnsSettings } from '../../../api/environment';
 import { validateMxRecord } from '../../../api/inbound-parse';
+import { MAIL_SERVER_DOMAIN } from '../../../config';
 
 export const EmailSettings = () => {
-  const MAIL_SERVER_DOMAIN = `10 ${process.env.REACT_APP_MAIL_SERVER_DOMAIN ?? 'dev.inbound-mail.novu.co'}`;
+  const mailServerDomain = `10 ${MAIL_SERVER_DOMAIN}`;
 
   const clipboardEnvironmentIdentifier = useClipboard({ timeout: 1000 });
   const { readonly, environment, refetchEnvironment } = useEnvController();
 
   const { mutateAsync: updateDnsSettingsMutation, isLoading: isUpdateDnsSettingsLoading } = useMutation<
     { dns: { mxRecordConfigured: boolean; inboundParseDomain: string } },
-    { error: string; message: string; statusCode: number },
+    IResponseError,
     { payload: { inboundParseDomain: string | undefined }; environmentId: string }
   >(({ payload, environmentId }) => updateDnsSettings(payload, environmentId));
 
@@ -35,18 +46,14 @@ export const EmailSettings = () => {
 
   useEffect(() => {
     if (environment) {
-      if (environment.dns?.inboundParseDomain) {
-        setValue('inboundParseDomain', environment.dns?.inboundParseDomain);
-      }
-      if (environment.dns?.mxRecordConfigured) {
-        setValue('mxRecordConfigured', environment.dns?.mxRecordConfigured);
-      }
+      setValue('inboundParseDomain', environment.dns?.inboundParseDomain || '');
+      setValue('mxRecordConfigured', environment.dns?.mxRecordConfigured || false);
     }
-  }, [environment]);
+  }, [setValue, environment]);
 
-  useEffect(() => {
+  useEffectOnce(() => {
     handleCheckRecords();
-  }, []);
+  }, true);
 
   async function handleUpdateDnsSettings({ inboundParseDomain }) {
     const payload = {
@@ -64,7 +71,7 @@ export const EmailSettings = () => {
   async function handleCheckRecords() {
     const record = await validateMxRecord();
 
-    if (record.mxRecordConfigured !== environment?.dns?.mxRecordConfigured) {
+    if (environment?.dns && record.mxRecordConfigured !== environment.dns.mxRecordConfigured) {
       await refetchEnvironment();
     }
   }
@@ -88,13 +95,25 @@ export const EmailSettings = () => {
                   <ActionIcon
                     variant="transparent"
                     data-test-id={'mail-server-domiain-copy'}
-                    onClick={() => clipboardEnvironmentIdentifier.copy(MAIL_SERVER_DOMAIN)}
+                    onClick={() => clipboardEnvironmentIdentifier.copy(mailServerDomain)}
                   >
-                    {clipboardEnvironmentIdentifier.copied ? <Check /> : <Copy />}
+                    {clipboardEnvironmentIdentifier.copied ? (
+                      <Check
+                        style={{
+                          color: colors.B60,
+                        }}
+                      />
+                    ) : (
+                      <Copy
+                        style={{
+                          color: colors.B60,
+                        }}
+                      />
+                    )}
                   </ActionIcon>
                 </Tooltip>
               }
-              value={MAIL_SERVER_DOMAIN}
+              value={mailServerDomain}
               data-test-id="mail-server-identifier"
             />
           </MantineInput.Wrapper>
@@ -106,7 +125,6 @@ export const EmailSettings = () => {
                 {...field}
                 mb={30}
                 data-test-id="inbound-parse-domain"
-                disabled={readonly}
                 value={field.value || ''}
                 label={'Allowed Domain'}
                 description={

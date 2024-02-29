@@ -1,10 +1,10 @@
-import { StepTypeEnum, DigestUnitEnum, DigestTypeEnum, DelayTypeEnum, JobStatusEnum } from '@novu/shared';
+import { StepTypeEnum, IWorkflowStepMetadata, JobStatusEnum, ITenantDefine } from '@novu/shared';
 import { Types } from 'mongoose';
 
 import { NotificationStepEntity } from '../notification-template';
 import type { EnvironmentId } from '../environment';
 import type { OrganizationId } from '../organization';
-import type { ChangePropsValueType } from '../../types/helpers';
+import type { ChangePropsValueType } from '../../types';
 
 export { JobStatusEnum };
 
@@ -16,9 +16,12 @@ export class JobEntity {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   overrides: Record<string, Record<string, unknown>>;
   step: NotificationStepEntity;
+  tenant?: ITenantDefine;
   transactionId: string;
   _notificationId: string;
+  subscriberId: string;
   _subscriberId: string;
+  _mergedDigestId?: string | null;
   _environmentId: EnvironmentId;
   _organizationId: OrganizationId;
   providerId?: string;
@@ -30,19 +33,14 @@ export class JobEntity {
   error?: any;
   createdAt: string;
   updatedAt: string;
+  expireAt?: string;
   _templateId: string;
-  digest?: {
+  digest?: IWorkflowStepMetadata & {
     events?: any[];
-    amount?: number;
-    unit?: DigestUnitEnum;
-    digestKey?: string;
-    type: DigestTypeEnum | DelayTypeEnum;
-    backoffUnit?: DigestUnitEnum;
-    backoffAmount?: number;
-    updateMode?: boolean;
   };
   type?: StepTypeEnum;
   _actorId?: string;
+  actorId?: string;
 }
 
 export type JobDBModel = ChangePropsValueType<

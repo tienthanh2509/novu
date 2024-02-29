@@ -57,7 +57,7 @@ const defaultLightTheme: INovuTheme = {
     },
   },
   footer: { logoTextColor: 'black', logoPrefixFontColor: colors.B70 },
-  loaderColor: colors.vertical,
+  loaderColor: colors.loader,
 };
 
 const defaultDarkTheme: INovuTheme = {
@@ -112,11 +112,11 @@ const defaultDarkTheme: INovuTheme = {
     },
   },
   footer: { logoTextColor: colors.white, logoPrefixFontColor: colors.B40 },
-  loaderColor: colors.vertical,
+  loaderColor: colors.loader,
 };
 
 const defaultCommonTheme: ICommonTheme = {
-  fontFamily: 'Lato',
+  fontFamily: 'inherit',
 };
 
 const defaultNotificationBellLightTheme: INotificationBellColors = {

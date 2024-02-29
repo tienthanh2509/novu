@@ -1,6 +1,5 @@
-import { ChannelTypeEnum } from '@novu/shared';
+import { ChannelTypeEnum, ICredentials } from '@novu/shared';
 import { TelnyxSmsProvider } from '@novu/telnyx';
-import { ICredentials } from '@novu/dal';
 import { BaseSmsHandler } from './base.handler';
 
 export class TelnyxHandler extends BaseSmsHandler {
@@ -9,16 +8,10 @@ export class TelnyxHandler extends BaseSmsHandler {
   }
 
   buildProvider(credentials: ICredentials) {
-    const config: {
-      apiKey: string;
-      from: string;
-      messageProfileId: string;
-    } = {
+    this.provider = new TelnyxSmsProvider({
       apiKey: credentials.apiKey,
       from: credentials.from,
       messageProfileId: credentials.messageProfileId,
-    };
-
-    this.provider = new TelnyxSmsProvider(config);
+    });
   }
 }

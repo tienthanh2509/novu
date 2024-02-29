@@ -3,13 +3,12 @@ import { SubscriberEntity, SubscriberRepository, MemberRepository } from '@novu/
 import { AnalyticsService } from '@novu/application-generic';
 
 import { UpdateSubscriberOnlineFlagCommand } from './update-subscriber-online-flag.command';
-import { ANALYTICS_SERVICE } from '../../../shared/shared.module';
 
 @Injectable()
 export class UpdateSubscriberOnlineFlag {
   constructor(
     private subscriberRepository: SubscriberRepository,
-    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService,
+    private analyticsService: AnalyticsService,
     private memberRepository: MemberRepository
   ) {}
 
@@ -18,18 +17,6 @@ export class UpdateSubscriberOnlineFlag {
       isOnline,
       ...(!isOnline && { lastOnlineAt: new Date().toISOString() }),
     };
-  }
-
-  private async trackIsOnlineUpdate(command: UpdateSubscriberOnlineFlagCommand, subscriber: SubscriberEntity) {
-    const admin = await this.memberRepository.getOrganizationAdminAccount(command.organizationId);
-    if (admin) {
-      this.analyticsService.track('Update online flag - [Subscriber]', admin._userId, {
-        _organizationId: command.organizationId,
-        _environmentId: command.environmentId,
-        _subscriberId: subscriber._id,
-        ...this.getUpdatedFields(command.isOnline),
-      });
-    }
   }
 
   async execute(command: UpdateSubscriberOnlineFlagCommand) {
@@ -42,7 +29,6 @@ export class UpdateSubscriberOnlineFlag {
         $set: this.getUpdatedFields(command.isOnline),
       }
     );
-    this.trackIsOnlineUpdate(command, subscriber);
 
     return (await this.subscriberRepository.findBySubscriberId(
       command.environmentId,

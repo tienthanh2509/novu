@@ -20,6 +20,11 @@ export interface IEmailOptions {
   replyTo?: string;
   cc?: string[];
   bcc?: string[];
+  payloadDetails?: any;
+  notificationDetails?: any;
+  ipPoolName?: string;
+  customData?: Record<string, any>;
+  senderName?: string;
 }
 
 export interface ISmsOptions {
@@ -28,6 +33,7 @@ export interface ISmsOptions {
   from?: string;
   attachments?: IAttachmentOptions[];
   id?: string;
+  customData?: Record<string, any>;
 }
 export interface IPushOptions {
   target: string[];
@@ -65,6 +71,12 @@ export interface IPushOptions {
     };
     fcmOptions?: { analyticsLabel?: string };
   };
+  subscriber: object;
+  step: {
+    digest: boolean;
+    events: object[] | undefined;
+    total_count: number | undefined;
+  };
 }
 
 export interface IChatOptions {
@@ -91,6 +103,8 @@ export enum EmailEventStatusEnum {
   BLOCKED = 'blocked',
   SPAM = 'spam',
   UNSUBSCRIBED = 'unsubscribed',
+  DELAYED = 'delayed',
+  COMPLAINT = 'complaint',
 }
 
 export enum SmsEventStatusEnum {

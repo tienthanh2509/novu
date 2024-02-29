@@ -1,10 +1,12 @@
 import { Injectable, Logger, NotFoundException, Scope } from '@nestjs/common';
+
 import { MemberEntity, OrganizationRepository, UserEntity, MemberRepository, UserRepository } from '@novu/dal';
 import { MemberStatusEnum } from '@novu/shared';
 import { Novu } from '@novu/node';
+import { AuthService } from '@novu/application-generic';
+
 import { ApiException } from '../../../shared/exceptions/api.exception';
 import { AcceptInviteCommand } from './accept-invite.command';
-import { AuthService } from '../../../auth/services/auth.service';
 import { capitalize } from '../../../shared/services/helper/helper.service';
 
 @Injectable({
@@ -53,7 +55,7 @@ export class AcceptInvite {
     if (!member.invite) return;
 
     try {
-      if ((process.env.NODE_ENV === 'dev' || process.env.NODE_ENV === 'prod') && process.env.NOVU_API_KEY) {
+      if ((process.env.NODE_ENV === 'dev' || process.env.NODE_ENV === 'production') && process.env.NOVU_API_KEY) {
         const novu = new Novu(process.env.NOVU_API_KEY);
 
         await novu.trigger(process.env.NOVU_TEMPLATEID_INVITE_ACCEPTED || 'invite-accepted-dEQAsKD1E', {

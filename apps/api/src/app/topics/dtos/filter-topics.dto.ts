@@ -12,14 +12,14 @@ export class FilterTopicsRequestDto {
   @IsInt()
   @Min(0)
   @ApiPropertyOptional({ type: Number })
-  public page?: number;
+  public page?: number = 0;
 
   @Transform(({ value }) => Number(value))
   @IsOptional()
   @IsInt()
   @Min(0)
   @ApiPropertyOptional({ type: Number })
-  public pageSize?: number;
+  public pageSize?: number = 10;
 
   @IsString()
   @IsOptional()
@@ -29,7 +29,8 @@ export class FilterTopicsRequestDto {
 
 export class FilterTopicsResponseDto {
   @ApiProperty({
-    type: Array,
+    type: TopicDto,
+    isArray: true,
   })
   data: TopicDto[];
 

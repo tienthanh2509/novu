@@ -71,6 +71,21 @@ describe('test use of novus node package - Events', () => {
             test: 'test-data',
           },
         },
+        email: {
+          customData: {
+            templateId: 'template-id-123',
+            nestedObject: {
+              firstChild: {
+                secondChild: {
+                  name: 'Second Child',
+                },
+              },
+            },
+            fourthChild: {
+              name: 'Fourth Child',
+            },
+          },
+        },
       },
     });
 
@@ -85,6 +100,47 @@ describe('test use of novus node package - Events', () => {
             test: 'test-data',
           },
         },
+        email: {
+          customData: {
+            templateId: 'template-id-123',
+            nestedObject: {
+              firstChild: {
+                secondChild: {
+                  name: 'Second Child',
+                },
+              },
+            },
+            fourthChild: {
+              name: 'Fourth Child',
+            },
+          },
+        },
+      },
+      payload: {
+        organizationName: 'Company',
+      },
+    });
+  });
+
+  test('should pass layout identifier overrides to request', async () => {
+    mockedAxios.post.mockResolvedValue({});
+
+    await novu.events.trigger('test-template', {
+      to: ['test-user', 'test-another-user'],
+      payload: {
+        organizationName: 'Company',
+      },
+      overrides: {
+        layoutIdentifier: 'overrides-identifier',
+      },
+    });
+
+    expect(mockedAxios.post).toHaveBeenCalled();
+    expect(mockedAxios.post).toHaveBeenCalledWith('/events/trigger', {
+      name: 'test-template',
+      to: ['test-user', 'test-another-user'],
+      overrides: {
+        layoutIdentifier: 'overrides-identifier',
       },
       payload: {
         organizationName: 'Company',

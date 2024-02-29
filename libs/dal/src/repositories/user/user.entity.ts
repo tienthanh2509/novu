@@ -1,4 +1,4 @@
-import { AuthProviderEnum } from '@novu/shared';
+import { AuthProviderEnum, IUserEntity, JobTitleEnum } from '@novu/shared';
 import { Exclude } from 'class-transformer';
 
 import { UserId } from './types';
@@ -17,7 +17,7 @@ export interface IUserResetTokenCount {
   reqInDay: number;
 }
 
-export class UserEntity {
+export class UserEntity implements IUserEntity {
   _id: UserId;
 
   resetToken?: string;
@@ -43,11 +43,16 @@ export class UserEntity {
   createdAt: string;
 
   showOnBoarding?: boolean;
+  showOnBoardingTour?: number;
 
   failedLogin?: {
     times: number;
     lastFailedAttempt: string;
   };
+
+  servicesHashes?: { intercom?: string };
+
+  jobTitle?: JobTitleEnum;
 }
 
 export type UserDBModel = UserEntity;

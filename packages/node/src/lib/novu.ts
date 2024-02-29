@@ -11,6 +11,14 @@ import { Environments } from './environments/environments';
 import { Feeds } from './feeds/feeds';
 import { Topics } from './topics/topics';
 import { Integrations } from './integrations/integrations';
+import { Messages } from './messages/messages';
+import { Tenants } from './tenants/tenants';
+import { ExecutionDetails } from './execution-details/execution-details';
+import { InboundParse } from './inbound-parse/inbound-parse';
+import { Organizations } from './organizations/organizations';
+import { WorkflowOverrides } from './workflow-override/workflow-override';
+
+import { makeRetryable } from './retry';
 
 export class Novu extends EventEmitter {
   private readonly apiKey?: string;
@@ -25,23 +33,32 @@ export class Novu extends EventEmitter {
   readonly feeds: Feeds;
   readonly topics: Topics;
   readonly integrations: Integrations;
+  readonly messages: Messages;
+  readonly tenants: Tenants;
+  readonly executionDetails: ExecutionDetails;
+  readonly inboundParse: InboundParse;
+  readonly organizations: Organizations;
+  readonly workflowOverrides: WorkflowOverrides;
 
   constructor(apiKey: string, config?: INovuConfiguration) {
     super();
     this.apiKey = apiKey;
-
-    this.http = axios.create({
+    const axiosInstance = axios.create({
       baseURL: this.buildBackendUrl(config),
       headers: {
         Authorization: `ApiKey ${this.apiKey}`,
       },
     });
 
+    if (config?.retryConfig) {
+      makeRetryable(axiosInstance, config);
+    }
+
+    this.http = axiosInstance;
+
     this.subscribers = new Subscribers(this.http);
     this.environments = new Environments(this.http);
     this.events = new Events(this.http);
-    this.trigger = this.events.trigger;
-    this.broadcast = this.events.broadcast;
     this.changes = new Changes(this.http);
     this.layouts = new Layouts(this.http);
     this.notificationGroups = new NotificationGroups(this.http);
@@ -49,23 +66,33 @@ export class Novu extends EventEmitter {
     this.feeds = new Feeds(this.http);
     this.topics = new Topics(this.http);
     this.integrations = new Integrations(this.http);
+    this.messages = new Messages(this.http);
+    this.tenants = new Tenants(this.http);
+    this.executionDetails = new ExecutionDetails(this.http);
+    this.inboundParse = new InboundParse(this.http);
+    this.organizations = new Organizations(this.http);
+    this.workflowOverrides = new WorkflowOverrides(this.http);
+
+    this.trigger = this.events.trigger;
+    this.bulkTrigger = this.events.bulkTrigger;
+    this.broadcast = this.events.broadcast;
   }
 
   public trigger: typeof Events.prototype.trigger;
 
-  public broadcast: typeof Events.prototype.broadcast;
-
   public bulkTrigger: typeof Events.prototype.bulkTrigger;
 
+  public broadcast: typeof Events.prototype.broadcast;
+
   private buildBackendUrl(config?: INovuConfiguration) {
-    const novuVersion = 'v1';
+    const novuApiVersion = 'v1';
 
     if (!config?.backendUrl) {
-      return `https://api.novu.co/${novuVersion}`;
+      return `https://api.novu.co/${novuApiVersion}`;
     }
 
     return config?.backendUrl.includes('novu.co/v')
       ? config?.backendUrl
-      : config?.backendUrl + `/${novuVersion}`;
+      : config?.backendUrl + `/${novuApiVersion}`;
   }
 }

@@ -1,6 +1,5 @@
 import { MailgunEmailProvider } from '@novu/mailgun';
-import { ChannelTypeEnum } from '@novu/shared';
-import { ICredentials } from '@novu/dal';
+import { ChannelTypeEnum, ICredentials } from '@novu/shared';
 import { BaseHandler } from './base.handler';
 
 export class MailgunHandler extends BaseHandler {
@@ -14,10 +13,12 @@ export class MailgunHandler extends BaseHandler {
       username: string;
       domain: string;
       from: string;
+      baseUrl?: string;
     } = {
-      apiKey: credentials.apiKey as string,
-      username: credentials.user as string,
-      domain: credentials.domain as string,
+      apiKey: credentials.apiKey,
+      username: credentials.user,
+      domain: credentials.domain,
+      baseUrl: credentials.baseUrl,
       from: from as string,
     };
 

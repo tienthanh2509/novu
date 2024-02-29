@@ -1,16 +1,26 @@
-import { ChannelTypeEnum } from '@novu/shared';
 import { SoftDeleteModel } from 'mongoose-delete';
 import { FilterQuery, Types } from 'mongoose';
+import { MarkMessagesAsEnum, ChannelTypeEnum, ActorTypeEnum } from '@novu/shared';
 
 import { BaseRepository } from '../base-repository';
 import { MessageEntity, MessageDBModel } from './message.entity';
 import { Message } from './message.schema';
 import { FeedRepository } from '../feed';
 import { DalException } from '../../shared';
+import { EnforceEnvId } from '../../types/enforce';
 
 type MessageQuery = FilterQuery<MessageDBModel>;
 
-export class MessageRepository extends BaseRepository<MessageDBModel, MessageEntity> {
+const getEntries = (obj: object, prefix = '') =>
+  Object.entries(obj).flatMap(([key, value]) =>
+    Object(value) === value ? getEntries(value, `${prefix}${key}.`) : [[`${prefix}${key}`, value]]
+  );
+
+const getFlatObject = (obj: object) => {
+  return Object.fromEntries(getEntries(obj));
+};
+
+export class MessageRepository extends BaseRepository<MessageDBModel, MessageEntity, EnforceEnvId> {
   private message: SoftDeleteModel;
   private feedRepository = new FeedRepository();
   constructor() {
@@ -22,10 +32,9 @@ export class MessageRepository extends BaseRepository<MessageDBModel, MessageEnt
     environmentId: string,
     subscriberId: string,
     channel: ChannelTypeEnum,
-    query: { feedId?: string[]; seen?: boolean; read?: boolean } = {},
-    options: { limit: number; skip?: number } = { limit: 10 }
-  ): Promise<MessageQuery> {
-    const requestQuery: MessageQuery = {
+    query: { feedId?: string[]; seen?: boolean; read?: boolean; payload?: object } = {}
+  ): Promise<MessageQuery & EnforceEnvId> {
+    let requestQuery: MessageQuery & EnforceEnvId = {
       _environmentId: environmentId,
       _subscriberId: subscriberId,
       channel,
@@ -52,10 +61,21 @@ export class MessageRepository extends BaseRepository<MessageDBModel, MessageEnt
 
     if (query.seen != null) {
       requestQuery.seen = query.seen;
+    } else {
+      requestQuery.seen = { $in: [true, false] };
     }
 
     if (query.read != null) {
       requestQuery.read = query.read;
+    } else {
+      requestQuery.read = { $in: [true, false] };
+    }
+
+    if (query.payload) {
+      requestQuery = {
+        ...requestQuery,
+        ...getFlatObject({ payload: query.payload }),
+      };
     }
 
     return requestQuery;
@@ -65,50 +85,160 @@ export class MessageRepository extends BaseRepository<MessageDBModel, MessageEnt
     environmentId: string,
     subscriberId: string,
     channel: ChannelTypeEnum,
-    query: { feedId?: string[]; seen?: boolean; read?: boolean } = {},
+    query: { feedId?: string[]; seen?: boolean; read?: boolean; payload?: object } = {},
     options: { limit: number; skip?: number } = { limit: 10 }
   ) {
     const requestQuery = await this.getFilterQueryForMessage(environmentId, subscriberId, channel, query);
+
     const messages = await this.MongooseModel.find(requestQuery, '', {
       limit: options.limit,
       skip: options.skip,
       sort: '-createdAt',
-    }).populate('subscriber', '_id firstName lastName avatar subscriberId');
+    })
+      .read('secondaryPreferred')
+      .populate('subscriber', '_id firstName lastName avatar subscriberId')
+      .populate('actorSubscriber', '_id firstName lastName avatar subscriberId');
 
     return this.mapEntities(messages);
-  }
-
-  async getTotalCount(
-    environmentId: string,
-    subscriberId: string,
-    channel: ChannelTypeEnum,
-    query: { feedId?: string[]; seen?: boolean } = {}
-  ) {
-    const requestQuery = await this.getFilterQueryForMessage(environmentId, subscriberId, channel, query);
-
-    return await this.count(requestQuery);
   }
 
   async getCount(
     environmentId: string,
     subscriberId: string,
     channel: ChannelTypeEnum,
-    query: { feedId?: string[]; seen?: boolean; read?: boolean } = {}
+    query: { feedId?: string[]; seen?: boolean; read?: boolean; payload?: object } = {},
+    options: { limit: number; skip?: number } = { limit: 100, skip: 0 }
   ) {
     const requestQuery = await this.getFilterQueryForMessage(environmentId, subscriberId, channel, {
       feedId: query.feedId,
       seen: query.seen,
       read: query.read,
+      payload: query.payload,
     });
 
-    return await this.count(requestQuery);
+    return this.MongooseModel.countDocuments(requestQuery, options).read('secondaryPreferred');
   }
 
-  async markAllUnseenAsSeen(subscriberId: string, environmentId: string) {
-    return this.update(
-      { _subscriberId: subscriberId, _environmentId: environmentId, seen: false },
-      { $set: { seen: true, lastSeenDate: new Date() } }
-    );
+  private getReadSeenUpdateQuery(
+    subscriberId: string,
+    environmentId: string,
+    markAs: MarkMessagesAsEnum
+  ): Partial<MessageEntity> & EnforceEnvId {
+    const updateQuery: Partial<MessageEntity> & EnforceEnvId = {
+      _subscriberId: subscriberId,
+      _environmentId: environmentId,
+    };
+
+    switch (markAs) {
+      case MarkMessagesAsEnum.READ:
+        return {
+          ...updateQuery,
+          read: false,
+        };
+      case MarkMessagesAsEnum.UNREAD:
+        return {
+          ...updateQuery,
+          read: true,
+        };
+      case MarkMessagesAsEnum.SEEN:
+        return {
+          ...updateQuery,
+          seen: false,
+        };
+      case MarkMessagesAsEnum.UNSEEN:
+        return {
+          ...updateQuery,
+          seen: true,
+        };
+      default:
+        return updateQuery;
+    }
+  }
+
+  private getReadSeenUpdatePayload(markAs: MarkMessagesAsEnum): {
+    read?: boolean;
+    lastReadDate?: Date;
+    seen?: boolean;
+    lastSeenDate?: Date;
+  } {
+    const now = new Date();
+
+    switch (markAs) {
+      case MarkMessagesAsEnum.READ:
+        return {
+          read: true,
+          lastReadDate: now,
+          seen: true,
+          lastSeenDate: now,
+        };
+      case MarkMessagesAsEnum.UNREAD:
+        return {
+          read: false,
+          lastReadDate: now,
+          seen: true,
+          lastSeenDate: now,
+        };
+      case MarkMessagesAsEnum.SEEN:
+        return {
+          seen: true,
+          lastSeenDate: now,
+        };
+      case MarkMessagesAsEnum.UNSEEN:
+        return {
+          seen: false,
+          lastSeenDate: now,
+        };
+      default:
+        return {};
+    }
+  }
+
+  async markAllMessagesAs({
+    subscriberId,
+    environmentId,
+    markAs,
+    channel,
+    feedIdentifiers,
+  }: {
+    subscriberId: string;
+    environmentId: string;
+    markAs: MarkMessagesAsEnum;
+    channel?: ChannelTypeEnum;
+    feedIdentifiers?: string[];
+  }) {
+    let feedQuery;
+
+    if (feedIdentifiers) {
+      const feeds = await this.feedRepository.find(
+        {
+          _environmentId: environmentId,
+          identifier: {
+            $in: feedIdentifiers,
+          },
+        },
+        '_id'
+      );
+
+      feedQuery = {
+        $in: feeds.map((feed) => feed._id),
+      };
+    }
+
+    const updateQuery = this.getReadSeenUpdateQuery(subscriberId, environmentId, markAs);
+
+    if (feedQuery != null) {
+      updateQuery._feedId = feedQuery;
+    }
+
+    if (channel != null) {
+      updateQuery.channel = channel;
+    }
+
+    const updatePayload = this.getReadSeenUpdatePayload(markAs);
+
+    return await this.update(updateQuery, {
+      $set: updatePayload,
+    });
   }
 
   async updateFeedByMessageTemplateId(environmentId: string, messageId: string, feedId?: string | null) {
@@ -145,74 +275,6 @@ export class MessageRepository extends BaseRepository<MessageDBModel, MessageEnt
         },
       }
     );
-  }
-
-  async getActivityGraphStats(date: Date, environmentId: string) {
-    return await this.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: date },
-          _environmentId: new Types.ObjectId(environmentId),
-        },
-      },
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
-          },
-          count: {
-            $sum: 1,
-          },
-        },
-      },
-      { $sort: { _id: -1 } },
-    ]);
-  }
-
-  async getFeed(
-    environmentId: string,
-    query: { channels?: ChannelTypeEnum[]; templates?: string[]; emails?: string[]; _subscriberId?: string } = {},
-    skip = 0,
-    limit = 10
-  ) {
-    const requestQuery: MessageQuery = {
-      _environmentId: environmentId,
-    };
-
-    if (query?.channels) {
-      requestQuery.channel = {
-        $in: query.channels,
-      };
-    }
-
-    if (query?.templates) {
-      requestQuery._templateId = {
-        $in: query.templates,
-      };
-    }
-
-    if (query?.emails) {
-      requestQuery.email = {
-        $in: query.emails,
-      };
-    }
-
-    if (query?._subscriberId) {
-      requestQuery._subscriberId = query?._subscriberId;
-    }
-
-    const totalCount = await this.count(requestQuery);
-    const response = await this.MongooseModel.find(requestQuery)
-      .populate('subscriber', 'firstName _id lastName email')
-      .populate('template', 'name _id')
-      .skip(skip)
-      .limit(limit)
-      .sort('-createdAt');
-
-    return {
-      totalCount,
-      data: this.mapEntities(response),
-    };
   }
 
   async changeStatus(
@@ -259,7 +321,15 @@ export class MessageRepository extends BaseRepository<MessageDBModel, MessageEnt
       throw new DalException(`Could not find a message with id ${query._id}`);
     }
 
-    await this.message.delete({ _id: message._id, _environmentId: message._environmentId });
+    return await this.message.delete({ _id: message._id, _environmentId: message._environmentId });
+  }
+
+  async deleteMany(query: MessageQuery) {
+    try {
+      return await this.message.delete({ ...query, deleted: false });
+    } catch (e) {
+      throw new DalException(e);
+    }
   }
 
   async findDeleted(query: MessageQuery): Promise<MessageEntity> {
@@ -269,10 +339,67 @@ export class MessageRepository extends BaseRepository<MessageDBModel, MessageEnt
   }
 
   async findMessageById(query: { _id: string; _environmentId: string }): Promise<MessageEntity | null> {
-    const res = await this.MongooseModel.findOne({ _id: query._id, _environmentId: query._environmentId }).populate(
-      'subscriber'
-    );
+    const res = await this.MongooseModel.findOne({ _id: query._id, _environmentId: query._environmentId })
+      .populate('subscriber')
+      .populate({
+        path: 'actorSubscriber',
+        match: {
+          'actor.type': ActorTypeEnum.USER,
+          _actorId: { $exists: true },
+        },
+        select: '_id firstName lastName avatar subscriberId',
+      });
 
     return this.mapEntity(res);
+  }
+
+  async findMessagesByTransactionId(
+    query: {
+      transactionId: string[];
+      _environmentId: string;
+    } & Partial<Omit<MessageEntity, 'transactionId'>>
+  ) {
+    const res = await this.MongooseModel.find({
+      transactionId: {
+        $in: query.transactionId,
+      },
+      _environmentId: query._environmentId,
+    })
+      .populate('subscriber')
+      .populate({
+        path: 'actorSubscriber',
+        match: {
+          'actor.type': ActorTypeEnum.USER,
+          _actorId: { $exists: true },
+        },
+        select: '_id firstName lastName avatar subscriberId',
+      });
+
+    return this.mapEntities(res);
+  }
+
+  async getMessages(
+    query: Partial<Omit<MessageEntity, 'transactionId'>> & {
+      _environmentId: string;
+      transactionId?: string[];
+    },
+    select = '',
+    options?: {
+      limit?: number;
+      skip?: number;
+    }
+  ) {
+    const filterQuery: FilterQuery<MessageEntity> = { ...query };
+    if (query.transactionId) {
+      filterQuery.transactionId = { $in: query.transactionId };
+    }
+    const data = await this.MongooseModel.find(query, select, {
+      limit: options?.limit,
+      skip: options?.skip,
+    })
+      .populate('subscriber', '_id firstName lastName avatar subscriberId')
+      .populate('actorSubscriber', '_id firstName lastName avatar subscriberId');
+
+    return this.mapEntities(data);
   }
 }

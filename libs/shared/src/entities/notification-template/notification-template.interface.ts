@@ -1,7 +1,7 @@
 import type { BuilderFieldType, BuilderGroupValues, TemplateVariableTypeEnum, FilterParts } from '../../types';
 import { IMessageTemplate } from '../message-template';
 import { IPreferenceChannels } from '../subscriber-preference';
-import { DelayTypeEnum, DigestTypeEnum, DigestUnitEnum } from '../step';
+import { IWorkflowStepMetadata } from '../step';
 
 export interface INotificationTemplate {
   _id?: string;
@@ -11,7 +11,7 @@ export interface INotificationTemplate {
   _parentId?: string;
   _environmentId: string;
   tags: string[];
-  draft: boolean;
+  draft?: boolean;
   active: boolean;
   critical: boolean;
   preferenceSettings: IPreferenceChannels;
@@ -19,6 +19,12 @@ export interface INotificationTemplate {
   updatedAt?: string;
   steps: INotificationTemplateStep[];
   triggers: INotificationTrigger[];
+  isBlueprint?: boolean;
+}
+
+export class IGroupedBlueprint {
+  name: string;
+  blueprints: INotificationTemplate[];
 }
 
 export enum TriggerTypeEnum {
@@ -30,6 +36,17 @@ export interface INotificationTrigger {
   identifier: string;
   variables: INotificationTriggerVariable[];
   subscriberVariables?: INotificationTriggerVariable[];
+  reservedVariables?: ITriggerReservedVariable[];
+}
+
+export enum TriggerContextTypeEnum {
+  TENANT = 'tenant',
+  ACTOR = 'actor',
+}
+
+export interface ITriggerReservedVariable {
+  type: TriggerContextTypeEnum;
+  variables: INotificationTriggerVariable[];
 }
 
 export interface INotificationTriggerVariable {
@@ -38,8 +55,10 @@ export interface INotificationTriggerVariable {
   type?: TemplateVariableTypeEnum;
 }
 
-export interface INotificationTemplateStep {
+export interface IStepVariant {
   _id?: string;
+  uuid?: string;
+  name?: string;
   filters?: IMessageFilter[];
   _templateId?: string;
   _parentId?: string | null;
@@ -50,18 +69,16 @@ export interface INotificationTemplateStep {
     active: boolean;
     url: string;
   };
-  metadata?: {
-    amount?: number;
-    unit?: DigestUnitEnum;
-    type?: DigestTypeEnum | DelayTypeEnum;
-    digestKey?: string;
-    delayPath?: string;
-  };
+  metadata?: IWorkflowStepMetadata;
+}
+
+export interface INotificationTemplateStep extends IStepVariant {
+  variants?: IStepVariant[];
 }
 
 export interface IMessageFilter {
   isNegated?: boolean;
-  type: BuilderFieldType;
+  type?: BuilderFieldType;
   value: BuilderGroupValues;
   children: FilterParts[];
 }

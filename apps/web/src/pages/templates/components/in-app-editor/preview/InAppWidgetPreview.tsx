@@ -2,10 +2,12 @@ import { Badge, Card, Container, Group, Space, useMantineTheme } from '@mantine/
 import { useState } from 'react';
 import { formatDistanceToNow, subMinutes } from 'date-fns';
 import { IMessageAction } from '@novu/shared';
-import { colors, shadows, Text, Title } from '../../../../../design-system';
-import { ButtonsTemplatesPopover } from '../../in-app-editor/ButtonsTemplatesPopover';
+
 import { ActionBlockContainer } from './ActionBlockContainer';
 import AvatarContainer from './AvatarContainer';
+
+import { colors, shadows, Text, Title } from '@novu/design-system';
+import { ButtonsTemplatesPopover } from '../ButtonsTemplatesPopover';
 
 function minutesAgo(num: number): string {
   return formatDistanceToNow(subMinutes(new Date(), num), { addSuffix: true });
@@ -16,16 +18,14 @@ export function InAppWidgetPreview({
   children,
   value,
   onChange,
-  index,
   enableAvatar,
   preview = false,
 }: {
   readonly: boolean;
   preview?: boolean;
   children: JSX.Element;
-  value: IMessageAction;
+  value: IMessageAction | undefined;
   onChange: (data: any) => void;
-  index: number;
   enableAvatar: boolean;
 }) {
   const theme = useMantineTheme();
@@ -41,7 +41,7 @@ export function InAppWidgetPreview({
 
   function onRemoveTemplate() {
     setIsButtonsTemplateSelected(false);
-    onChange('');
+    onChange({});
   }
 
   const editableContent = (
@@ -88,7 +88,6 @@ export function InAppWidgetPreview({
             <Group position="left" spacing={10} noWrap>
               {enableAvatar && (
                 <AvatarContainer
-                  index={index}
                   opened={avatarContainerOpened}
                   setOpened={setAvatarContainerOpened}
                   readonly={readonly}

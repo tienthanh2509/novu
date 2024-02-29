@@ -1,10 +1,10 @@
 import { IConfigCredentials } from '@novu/shared';
 import styled from '@emotion/styled';
 import { Group, useMantineColorScheme } from '@mantine/core';
-import { Button, colors, shadows } from '../../../design-system';
+
+import { Button, colors, shadows, Settings } from '@novu/design-system';
 import { CardStatusBar } from './CardStatusBar';
-import { Settings } from '../../../design-system/icons';
-import { IIntegratedProvider } from '../IntegrationsStorePage';
+import type { IIntegratedProvider } from '../types';
 import { When } from '../../../components/utils/When';
 import { CONTEXT_PATH } from '../../../config';
 

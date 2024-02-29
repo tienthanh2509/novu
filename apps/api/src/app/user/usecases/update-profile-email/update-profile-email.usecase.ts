@@ -1,18 +1,26 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+
 import { UserRepository } from '@novu/dal';
-import { AnalyticsService } from '@novu/application-generic';
+import {
+  AnalyticsService,
+  buildAuthServiceKey,
+  buildUserKey,
+  decryptApiKey,
+  InvalidateCacheService,
+} from '@novu/application-generic';
+import { EnvironmentRepository } from '@novu/dal';
 
 import { UpdateProfileEmailCommand } from './update-profile-email.command';
-import { CacheKeyPrefixEnum, InvalidateCacheService } from '../../../shared/services/cache';
 import { normalizeEmail } from '../../../shared/helpers/email-normalization.service';
-import { ANALYTICS_SERVICE } from '../../../shared/shared.module';
 
 @Injectable()
 export class UpdateProfileEmail {
   constructor(
     private invalidateCache: InvalidateCacheService,
     private readonly userRepository: UserRepository,
-    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService
+    private readonly environmentRepository: EnvironmentRepository,
+    @Inject(forwardRef(() => AnalyticsService))
+    private analyticsService: AnalyticsService
   ) {}
 
   async execute(command: UpdateProfileEmailCommand) {
@@ -31,11 +39,20 @@ export class UpdateProfileEmail {
       }
     );
 
-    this.invalidateCache.clearCache({
-      storeKeyPrefix: [CacheKeyPrefixEnum.USER],
-      credentials: {
+    await this.invalidateCache.invalidateByKey({
+      key: buildUserKey({
         _id: command.userId,
-      },
+      }),
+    });
+
+    const apiKeys = await this.environmentRepository.getApiKeys(command.environmentId);
+
+    const decryptedApiKey = decryptApiKey(apiKeys[0].key);
+
+    await this.invalidateCache.invalidateByKey({
+      key: buildAuthServiceKey({
+        apiKey: decryptedApiKey,
+      }),
     });
 
     const updatedUser = await this.userRepository.findById(command.userId);

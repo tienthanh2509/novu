@@ -1,10 +1,10 @@
 import { AuthProviderEnum } from '@novu/shared';
-
+import { createHash } from 'crypto';
 import { BaseRepository } from '../base-repository';
 import { IUserResetTokenCount, UserEntity, UserDBModel } from './user.entity';
 import { User } from './user.schema';
 
-export class UserRepository extends BaseRepository<UserDBModel, UserEntity> {
+export class UserRepository extends BaseRepository<UserDBModel, UserEntity, object> {
   constructor() {
     super(User, UserEntity);
   }
@@ -15,9 +15,20 @@ export class UserRepository extends BaseRepository<UserDBModel, UserEntity> {
     });
   }
 
+  async findById(id: string, select?: string): Promise<UserEntity | null> {
+    const data = await this.MongooseModel.findById(id, select);
+    if (!data) return null;
+
+    return this.mapEntity(data.toObject());
+  }
+
+  private hashResetToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
   async findUserByToken(token: string) {
     return await this.findOne({
-      resetToken: token,
+      resetToken: this.hashResetToken(token),
     });
   }
 
@@ -28,7 +39,7 @@ export class UserRepository extends BaseRepository<UserDBModel, UserEntity> {
       },
       {
         $set: {
-          resetToken: token,
+          resetToken: this.hashResetToken(token),
           resetTokenDate: new Date(),
           resetTokenCount,
         },

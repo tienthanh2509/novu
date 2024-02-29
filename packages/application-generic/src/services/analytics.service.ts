@@ -1,13 +1,8 @@
-import Analytics from 'analytics-node';
+import { Analytics } from '@segment/analytics-node';
+import { Logger } from '@nestjs/common';
+import * as Mixpanel from 'mixpanel';
 
-// Due to problematic analytics-node types, we need to use require
-// eslint-disable-next-line @typescript-eslint/naming-convention
-const AnalyticsClass = require('analytics-node');
-
-interface IOrganization {
-  name?: string | null;
-  createdAt?: string | null;
-}
+import { IOrganizationEntity } from '@novu/shared';
 
 interface IUser {
   _id?: string | null;
@@ -18,33 +13,48 @@ interface IUser {
   createdAt?: string | null;
 }
 
+const LOG_CONTEXT = 'AnalyticsService';
+
 export class AnalyticsService {
   private segment: Analytics;
-
-  constructor(private segmentToken?: string | null) {}
+  private mixpanel: Mixpanel.Mixpanel;
+  constructor(private segmentToken?: string | null, private batchSize = 100) {}
 
   async initialize() {
     if (this.segmentToken) {
-      this.segment = new AnalyticsClass(this.segmentToken);
+      this.segment = new Analytics({
+        writeKey: this.segmentToken,
+        maxEventsInBatch: this.batchSize,
+      });
+    }
+
+    if (process.env.MIXPANEL_TOKEN) {
+      this.mixpanel = Mixpanel.init(process.env.MIXPANEL_TOKEN);
     }
   }
 
   upsertGroup(
     organizationId: string,
-    organization: IOrganization,
+    organization: IOrganizationEntity,
     user: IUser
   ) {
     if (this.segmentEnabled) {
+      const traits: Record<string, unknown> = {
+        _organization: organizationId,
+        id: organizationId,
+        name: organization.name,
+        createdAt: organization.createdAt,
+        domain: organization.domain || user.email?.split('@')[1],
+      };
+
+      if (organization.productUseCases) {
+        traits.productUseCases = organization.productUseCases;
+      }
+
       this.segment.group({
-        userId: user._id,
+        userId: user._id as any,
         groupId: organizationId,
-        traits: {
-          _organization: organizationId,
-          id: organizationId,
-          name: organization.name,
-          createdAt: organization.createdAt,
-          domain: user.email?.split('@')[1],
-        },
+        traits: traits,
       });
     }
   }
@@ -73,6 +83,8 @@ export class AnalyticsService {
           email: user.email,
           avatar: user.profilePicture,
           createdAt: user.createdAt,
+          // For segment auto mapping
+          created: user.createdAt,
           githubProfile: githubToken?.username,
         },
       });
@@ -92,15 +104,76 @@ export class AnalyticsService {
 
   track(name: string, userId: string, data: Record<string, unknown> = {}) {
     if (this.segmentEnabled) {
-      this.segment.track({
-        userId: userId,
-        event: name,
-        properties: data,
-      });
+      Logger.log(
+        'Tracking event: ' + name,
+        {
+          name,
+          data,
+          source: 'segment',
+        },
+        LOG_CONTEXT
+      );
+
+      try {
+        this.segment.track({
+          userId: userId,
+          event: name,
+          properties: data,
+        });
+      } catch (error: any) {
+        Logger.error(
+          {
+            eventName: name,
+            usedId: userId,
+            message: error.message,
+          },
+          'There has been an error when tracking',
+          LOG_CONTEXT
+        );
+      }
+    }
+  }
+
+  mixpanelTrack(
+    name: string,
+    userId: string,
+    data: Record<string, unknown> = {}
+  ) {
+    if (this.mixpanelEnabled) {
+      Logger.log(
+        'Tracking event: ' + name,
+        {
+          name,
+          data,
+          source: 'mixpanel',
+        },
+        LOG_CONTEXT
+      );
+
+      try {
+        this.mixpanel.track(name, {
+          distinct_id: userId,
+          ...data,
+        });
+      } catch (error: any) {
+        Logger.error(
+          {
+            eventName: name,
+            usedId: userId,
+            message: error?.message,
+          },
+          'There has been an error when tracking mixpanel',
+          LOG_CONTEXT
+        );
+      }
     }
   }
 
   private get segmentEnabled() {
     return process.env.NODE_ENV !== 'test' && this.segment;
+  }
+
+  private get mixpanelEnabled() {
+    return process.env.NODE_ENV !== 'test' && this.mixpanel;
   }
 }

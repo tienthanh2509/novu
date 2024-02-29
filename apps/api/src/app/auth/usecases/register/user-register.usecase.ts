@@ -2,15 +2,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import { OrganizationEntity, UserRepository } from '@novu/dal';
 import * as bcrypt from 'bcrypt';
 import { SignUpOriginEnum } from '@novu/shared';
-import { AnalyticsService } from '@novu/application-generic';
+import { AnalyticsService, AuthService, createHash } from '@novu/application-generic';
 
-import { AuthService } from '../../services/auth.service';
 import { UserRegisterCommand } from './user-register.command';
 import { normalizeEmail } from '../../../shared/helpers/email-normalization.service';
 import { ApiException } from '../../../shared/exceptions/api.exception';
 import { CreateOrganization } from '../../../organization/usecases/create-organization/create-organization.usecase';
 import { CreateOrganizationCommand } from '../../../organization/usecases/create-organization/create-organization.command';
-import { ANALYTICS_SERVICE } from '../../../shared/shared.module';
 
 @Injectable()
 export class UserRegister {
@@ -18,7 +16,7 @@ export class UserRegister {
     private authService: AuthService,
     private userRepository: UserRepository,
     private createOrganizationUsecase: CreateOrganization,
-    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService
+    private analyticsService: AnalyticsService
   ) {}
 
   async execute(command: UserRegisterCommand) {
@@ -36,12 +34,28 @@ export class UserRegister {
       password: passwordHash,
     });
 
+    if (process.env.INTERCOM_IDENTITY_VERIFICATION_SECRET_KEY) {
+      const intercomSecretKey = process.env.INTERCOM_IDENTITY_VERIFICATION_SECRET_KEY as string;
+      const userHashForIntercom = createHash(intercomSecretKey, user._id);
+      await this.userRepository.update(
+        { _id: user._id },
+        {
+          $set: {
+            'servicesHashes.intercom': userHashForIntercom,
+          },
+        }
+      );
+    }
+
     let organization: OrganizationEntity;
     if (command.organizationName) {
       organization = await this.createOrganizationUsecase.execute(
         CreateOrganizationCommand.create({
           name: command.organizationName,
           userId: user._id,
+          jobTitle: command.jobTitle,
+          domain: command.domain,
+          productUseCases: command.productUseCases,
         })
       );
     }

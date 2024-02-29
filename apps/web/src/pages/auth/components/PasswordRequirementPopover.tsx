@@ -1,9 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Text, Box, createStyles, Popover } from '@mantine/core';
 import { useWatch } from 'react-hook-form';
-import { Check } from '../../../design-system/icons';
-import { Close } from '../../../design-system/icons/actions/Close';
-import { colors } from '../../../design-system';
+import { Check, Close, colors } from '@novu/design-system';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
 
 const usePopoverStyles = createStyles(({ colorScheme }) => ({
@@ -57,7 +55,14 @@ export function PasswordRequirementPopover({ control, children }) {
 
   return (
     <div>
-      <Popover opened={popoverOpened} position="bottom" width="target" transition="pop" classNames={classes}>
+      <Popover
+        opened={popoverOpened}
+        position="bottom"
+        width="target"
+        transition="pop"
+        classNames={classes}
+        middlewares={{ flip: false, shift: false }}
+      >
         <Popover.Target>
           <div onFocusCapture={() => setPopoverOpened(true)} onBlurCapture={() => setPopoverOpened(false)}>
             {children}

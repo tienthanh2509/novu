@@ -1,6 +1,5 @@
-import { ChannelTypeEnum } from '@novu/shared';
-import { ICredentials } from '@novu/dal';
-import { SendinblueEmailProvider } from '@novu/sendinblue';
+import { ChannelTypeEnum, ICredentials } from '@novu/shared';
+import { BrevoEmailProvider } from '@novu/sendinblue';
 import { BaseHandler } from './base.handler';
 
 export class SendinblueHandler extends BaseHandler {
@@ -8,12 +7,12 @@ export class SendinblueHandler extends BaseHandler {
     super('sendinblue', ChannelTypeEnum.EMAIL);
   }
   buildProvider(credentials: ICredentials, from?: string) {
-    const config: { apiKey: string; senderName: string; from: string } = {
+    const config: { apiKey: string; from: string; senderName: string } = {
       apiKey: credentials.apiKey as string,
-      senderName: credentials.senderName as string,
       from: from as string,
+      senderName: credentials.senderName as string,
     };
 
-    this.provider = new SendinblueEmailProvider(config);
+    this.provider = new BrevoEmailProvider(config);
   }
 }

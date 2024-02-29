@@ -1,15 +1,12 @@
-import { LayoutEntity, LayoutRepository } from '@novu/dal';
 import { ConflictException, Injectable, Inject } from '@nestjs/common';
+import { LayoutEntity, LayoutRepository } from '@novu/dal';
+import { AnalyticsService, GetLayoutCommand, GetLayoutUseCase } from '@novu/application-generic';
 
 import { UpdateLayoutCommand } from './update-layout.command';
-
 import { CreateLayoutChangeCommand, CreateLayoutChangeUseCase } from '../create-layout-change';
-import { GetLayoutCommand, GetLayoutUseCase } from '../get-layout';
 import { SetDefaultLayoutCommand, SetDefaultLayoutUseCase } from '../set-default-layout';
 import { LayoutDto } from '../../dtos/layout.dto';
 import { ApiException } from '../../../shared/exceptions/api.exception';
-import { ANALYTICS_SERVICE } from '../../../shared/shared.module';
-import { AnalyticsService } from '@novu/application-generic';
 
 @Injectable()
 export class UpdateLayoutUseCase {
@@ -18,7 +15,7 @@ export class UpdateLayoutUseCase {
     private createLayoutChange: CreateLayoutChangeUseCase,
     private setDefaultLayout: SetDefaultLayoutUseCase,
     private layoutRepository: LayoutRepository,
-    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService
+    private analyticsService: AnalyticsService
   ) {}
 
   async execute(command: UpdateLayoutCommand): Promise<LayoutDto> {
@@ -28,6 +25,21 @@ export class UpdateLayoutUseCase {
       organizationId: command.organizationId,
     });
     const databaseEntity = await this.getLayoutUseCase.execute(getLayoutCommand);
+
+    const identifierHasChanged = command.identifier && command.identifier !== databaseEntity.identifier;
+    if (identifierHasChanged) {
+      const existingLayoutWithIdentifier = await this.layoutRepository.findOne({
+        _organizationId: command.organizationId,
+        _environmentId: command.environmentId,
+        identifier: command.identifier,
+      });
+
+      if (existingLayoutWithIdentifier) {
+        throw new ConflictException(
+          `Layout with identifier: ${command.identifier} already exists under environment ${command.environmentId}`
+        );
+      }
+    }
 
     if (typeof command.isDefault === 'boolean' && !command.isDefault && databaseEntity.isDefault) {
       throw new ConflictException(`One default layout is required`);
@@ -79,6 +91,7 @@ export class UpdateLayoutUseCase {
     return {
       ...layout,
       ...(updates.name && { name: updates.name }),
+      ...(updates.identifier && { identifier: updates.identifier }),
       ...(updates.description && { description: updates.description }),
       ...(updates.content && { content: updates.content }),
       ...(updates.variables && { variables: updates.variables }),

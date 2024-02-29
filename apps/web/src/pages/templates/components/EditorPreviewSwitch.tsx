@@ -1,5 +1,5 @@
 import { SegmentedControl, useMantineTheme } from '@mantine/core';
-import { colors } from '../../../design-system';
+import { colors } from '@novu/design-system';
 import { ViewEnum } from './email-editor/EmailMessagesCards';
 
 export const EditorPreviewSwitch = ({ view, setView }) => {
@@ -13,6 +13,8 @@ export const EditorPreviewSwitch = ({ view, setView }) => {
           background: 'transparent',
           border: `1px solid ${theme.colorScheme === 'dark' ? colors.B40 : colors.B70}`,
           borderRadius: '30px',
+          width: '100%',
+          maxWidth: '300px',
         },
         label: {
           fontSize: '14px',

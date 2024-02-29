@@ -1,12 +1,15 @@
 import { expect } from 'chai';
 import { ChangeRepository } from '@novu/dal';
-import { EmailBlockTypeEnum, StepTypeEnum, FilterPartTypeEnum } from '@novu/shared';
+import {
+  EmailBlockTypeEnum,
+  StepTypeEnum,
+  FilterPartTypeEnum,
+  FieldLogicalOperatorEnum,
+  FieldOperatorEnum,
+} from '@novu/shared';
 import { UserSession } from '@novu/testing';
 
-import {
-  CreateNotificationTemplateRequestDto,
-  UpdateNotificationTemplateRequestDto,
-} from '../../notification-template/dto';
+import { CreateWorkflowRequestDto, UpdateWorkflowRequestDto } from '../../workflows/dto';
 
 describe('Get changes', () => {
   let session: UserSession;
@@ -18,7 +21,7 @@ describe('Get changes', () => {
   });
 
   it('get list of changes', async () => {
-    const testTemplate: Partial<CreateNotificationTemplateRequestDto> = {
+    const testTemplate: Partial<CreateWorkflowRequestDto> = {
       name: 'test email template',
       description: 'This is a test description',
       tags: ['test-tag'],
@@ -35,13 +38,13 @@ describe('Get changes', () => {
             {
               isNegated: false,
               type: 'GROUP',
-              value: 'AND',
+              value: FieldLogicalOperatorEnum.AND,
               children: [
                 {
                   on: FilterPartTypeEnum.SUBSCRIBER,
                   field: 'firstName',
                   value: 'test value',
-                  operator: 'EQUAL',
+                  operator: FieldOperatorEnum.EQUAL,
                 },
               ],
             },
@@ -50,11 +53,11 @@ describe('Get changes', () => {
       ],
     };
 
-    const { body } = await session.testAgent.post(`/v1/notification-templates`).send(testTemplate);
+    const { body } = await session.testAgent.post(`/v1/workflows`).send(testTemplate);
 
     await session.applyChanges();
 
-    const updateData: UpdateNotificationTemplateRequestDto = {
+    const updateData: UpdateWorkflowRequestDto = {
       name: testTemplate.name,
       tags: testTemplate.tags,
       description: testTemplate.description,
@@ -64,7 +67,7 @@ describe('Get changes', () => {
 
     const notificationTemplateId = body.data._id;
 
-    await session.testAgent.put(`/v1/notification-templates/${notificationTemplateId}`).send(updateData);
+    await session.testAgent.put(`/v1/workflows/${notificationTemplateId}`).send(updateData);
 
     const {
       body: { data },

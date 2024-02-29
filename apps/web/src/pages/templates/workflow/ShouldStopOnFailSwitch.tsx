@@ -1,15 +1,19 @@
 import styled from '@emotion/styled';
-import { Controller } from 'react-hook-form';
-import { Switch } from '../../../design-system';
-import { useEnvController } from '../../../hooks';
+import { Controller, useFormContext } from 'react-hook-form';
+import { Switch } from '@novu/design-system';
 
-export const ShouldStopOnFailSwitch = ({ control, index }) => {
+import { useEnvController } from '../../../hooks';
+import { useStepFormPath } from '../hooks/useStepFormPath';
+
+export const ShouldStopOnFailSwitch = () => {
+  const { control } = useFormContext();
   const { readonly } = useEnvController();
+  const path = useStepFormPath();
 
   return (
     <Controller
       control={control}
-      name={`steps.${index}.shouldStopOnFail`}
+      name={`${path}.shouldStopOnFail`}
       defaultValue={false}
       render={({ field: { value, ...field } }) => {
         return (
@@ -17,7 +21,7 @@ export const ShouldStopOnFailSwitch = ({ control, index }) => {
             {...field}
             disabled={readonly}
             checked={value}
-            label="Stop workflow if this step fails?"
+            label="Stop if step fails"
             data-test-id="step-should-stop-on-fail-switch"
           />
         );
@@ -28,4 +32,5 @@ export const ShouldStopOnFailSwitch = ({ control, index }) => {
 
 const StyledSwitch = styled(Switch)`
   max-width: 100% !important;
+  width: auto;
 `;

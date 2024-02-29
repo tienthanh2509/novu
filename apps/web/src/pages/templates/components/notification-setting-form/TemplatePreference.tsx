@@ -1,41 +1,32 @@
 import { FunctionComponent } from 'react';
-import { Grid, Input, useMantineColorScheme, InputWrapperProps } from '@mantine/core';
-import styled from '@emotion/styled';
+import { Group, Input, InputWrapperProps, Text } from '@mantine/core';
 import { useFormContext, Controller } from 'react-hook-form';
 
 import { useEnvController } from '../../../../hooks';
-import { inputStyles } from '../../../../design-system/config/inputs.styles';
-import { Checkbox, colors, Switch } from '../../../../design-system';
-import { channels } from '../../shared/channels';
+import { Checkbox, colors, Switch } from '@novu/design-system';
 import type { IForm } from '../formTypes';
+import { LabelWithTooltip } from '../../workflow/LabelWithTooltip';
+import { ChannelTitle } from '../ChannelTitle';
+import { ChannelTypeEnum } from '@novu/shared';
 
 export function TemplatePreference() {
   return (
     <>
-      <Grid>
-        <Grid.Col span={6}>
-          <ChannelPreference />
-        </Grid.Col>
-        <Grid.Col span={6}>
-          <CriticalPreference />
-        </Grid.Col>
-      </Grid>
+      <CriticalPreference />
+      <ChannelPreference />
     </>
   );
 }
 
 export function ChannelPreference() {
   const { control } = useFormContext();
-  const { colorScheme } = useMantineColorScheme();
-  const dark = colorScheme === 'dark';
+  const { readonly } = useEnvController();
 
   return (
     <Controller
       name="preferenceSettings"
       control={control}
       render={({ field }) => {
-        const { readonly } = useEnvController();
-
         const preferences: IForm['preferenceSettings'] = field.value;
 
         function handleCheckboxChange(e, channelType) {
@@ -45,32 +36,34 @@ export function ChannelPreference() {
         }
 
         return (
-          <InputBackground
-            dark={dark}
-            label="Template Defaults"
-            description="Check the channels you would like to be ON by default"
-            styles={inputStyles}
-          >
-            <Grid pt={8.5}>
-              {Object.keys(preferences).map((key) => {
-                const label = channels.find((channel) => channel.tabKey === key)?.label;
-                const checked = preferences[key] || false;
+          <>
+            <Text color={colors.B60}>Default Channels On:</Text>
+            {Object.keys(preferences).map((key) => {
+              const checked = preferences[key] || false;
 
-                return (
-                  <Grid.Col key={key} md={6} lg={4}>
-                    <StyledCheckbox
-                      isChecked={checked}
+              return (
+                <Group
+                  sx={{
+                    padding: 18,
+                    border: `1px dashed ${colors.B40}`,
+                    borderRadius: 8,
+                  }}
+                  position="apart"
+                  key={key}
+                >
+                  <Text>{<ChannelTitle channel={key as ChannelTypeEnum} />}</Text>
+                  <div>
+                    <Switch
                       checked={checked}
                       disabled={readonly}
                       data-test-id={`preference-${key}`}
-                      label={label}
                       onChange={(e) => handleCheckboxChange(e, key)}
                     />
-                  </Grid.Col>
-                );
-              })}
-            </Grid>
-          </InputBackground>
+                  </div>
+                </Group>
+              );
+            })}
+          </>
         );
       }}
     />
@@ -79,64 +72,31 @@ export function ChannelPreference() {
 
 export function CriticalPreference() {
   const { control } = useFormContext();
-  const { colorScheme } = useMantineColorScheme();
-  const dark = colorScheme === 'dark';
+  const { readonly } = useEnvController();
 
   return (
     <Controller
       name="critical"
-      defaultValue={false}
+      defaultValue={true}
       control={control}
       render={({ field }) => {
         return (
-          <InputBackground
-            dark={dark}
-            label="System Critical (Always Sent)"
-            description={<CriticalDescription field={field} />}
-            styles={inputStyles}
-            children={null}
-          />
+          <Group align="center" position="apart">
+            <LabelWithTooltip
+              label="Users will be able to manage subscriptions"
+              tooltip="Allow opting out of the specific channel. Users will receive notifications in the active channels."
+            />
+            <Switch {...field} checked={field.value} disabled={readonly} data-test-id="critical" />
+          </Group>
         );
       }}
     />
   );
 }
 
-function CriticalDescription({ field }) {
-  const { readonly } = useEnvController();
-
-  return (
-    <DescriptionWrapper>
-      {"When on, the template will not show in the user preferences, meaning they wouldn't be able to opt out."}
-      <Switch {...field} checked={field.value || false} disabled={readonly} data-test-id="critical" />
-    </DescriptionWrapper>
-  );
-}
-
 export const InputWrapperProxy: FunctionComponent<InputWrapperProps> = ({ children, ...props }) => {
   return <Input.Wrapper {...props}>{children}</Input.Wrapper>;
 };
-
-const InputBackground = styled(InputWrapperProxy)<{ dark: boolean }>`
-  background: ${({ dark }) => (dark ? colors.B17 : colors.B98)};
-  border-radius: 7px;
-  padding: 20px;
-`;
-
-const DescriptionWrapper = styled.div`
-  display: flex;
-  justify-content: space-between;
-`;
-
-const StyledCheckbox = styled(CheckboxProxy)<{ isChecked: boolean }>`
-  label {
-    ${({ isChecked }) =>
-      !isChecked &&
-      `
-    color: ${colors.B60}
-  `}
-  }
-`;
 
 export function CheckboxProxy({ ...props }) {
   return <Checkbox {...props} />;

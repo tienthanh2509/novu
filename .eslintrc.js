@@ -7,9 +7,8 @@ module.exports = {
     'prettier',
     'plugin:prettier/recommended',
     'plugin:promise/recommended',
-    'plugin:@cspell/recommended',
   ],
-  ignorePatterns: ['.eslintrc.js', '*.json', 'jest.config.js'],
+  ignorePatterns: ['.eslintrc.js', '*.json', 'jest.config.js', 'jest.setup.js'],
   plugins: ['import', 'promise', '@typescript-eslint', 'prettier'],
   parser: '@typescript-eslint/parser',
   settings: {
@@ -28,7 +27,7 @@ module.exports = {
     '@typescript-eslint/lines-between-class-members': 'off',
     'react/jsx-wrap-multilines': 'off',
     'react/jsx-filename-extension': 'off',
-    'multiline-comment-style': ['error', 'starred-block'],
+    'multiline-comment-style': ['warn', 'starred-block'],
     'promise/catch-or-return': 'off',
     '@typescript-eslint/explicit-module-boundary-types': 'off',
     '@typescript-eslint/no-unused-expressions': 'off',
@@ -61,6 +60,7 @@ module.exports = {
     'react/react-in-jsx-scope': 'off',
     'max-len': ['warn', { code: 140 }],
     '@typescript-eslint/return-await': 'off',
+    '@typescript-eslint/no-base-to-string': 'error',
     'no-restricted-imports': [
       'error',
       {

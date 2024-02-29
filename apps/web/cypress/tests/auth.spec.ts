@@ -1,4 +1,5 @@
 import * as capitalize from 'lodash.capitalize';
+import { JobTitleEnum, jobTitleToLabelMapper } from '@novu/shared';
 
 describe('User Sign-up and Login', function () {
   describe('Sign up', function () {
@@ -14,11 +15,18 @@ describe('User Sign-up and Login', function () {
       cy.getByTestId('email').type('example@example.com');
       cy.getByTestId('password').type('usEr_password_123!');
       cy.getByTestId('accept-cb').click({ force: true });
+
       cy.getByTestId('submitButton').click();
+
       cy.location('pathname').should('equal', '/auth/application');
-      cy.getByTestId('app-creation').type('Organization Name');
+      cy.getByTestId('questionnaire-job-title').click();
+      cy.get('.mantine-Select-item').contains(jobTitleToLabelMapper[JobTitleEnum.PRODUCT_MANAGER]).click();
+      cy.getByTestId('questionnaire-company-name').type('Company Name');
+      cy.getByTestId('check-box-container-multi_channel').trigger('mouseover').click();
+
       cy.getByTestId('submit-btn').click();
-      cy.location('pathname').should('equal', '/quickstart');
+
+      cy.location('pathname').should('equal', '/get-started');
     });
 
     it('should show account already exists when signing up with already registered mail', function () {
@@ -51,7 +59,7 @@ describe('User Sign-up and Login', function () {
       cy.loginWithGitHub();
 
       cy.location('pathname').should('equal', '/auth/application');
-      cy.getByTestId('app-creation').type('Organization Name');
+      cy.getByTestId('questionnaire-company-name').type('Organization Name');
       cy.getByTestId('submit-btn').click();
 
       cy.location('pathname').should('equal', '/quickstart');
@@ -62,7 +70,7 @@ describe('User Sign-up and Login', function () {
       cy.getByTestId('logout-button').click();
       cy.getByTestId('github-button').click();
 
-      cy.location('pathname').should('equal', '/templates');
+      cy.location('pathname').should('equal', '/workflows');
       cy.getByTestId('header-profile-avatar').click();
       cy.getByTestId('header-dropdown-username').contains('Johnny Depp');
     });
@@ -82,7 +90,7 @@ describe('User Sign-up and Login', function () {
       cy.getByTestId('submitButton').click();
 
       cy.location('pathname').should('equal', '/auth/application');
-      cy.getByTestId('app-creation').type('Organization Name');
+      cy.getByTestId('questionnaire-company-name').type('Organization Name');
       cy.getByTestId('submit-btn').click();
 
       cy.location('pathname').should('equal', '/quickstart');
@@ -93,7 +101,7 @@ describe('User Sign-up and Login', function () {
       cy.location('pathname').should('equal', '/auth/login');
       cy.loginWithGitHub();
 
-      cy.location('pathname').should('equal', '/templates');
+      cy.location('pathname').should('equal', '/workflows');
       cy.getByTestId('header-profile-avatar').click();
       cy.getByTestId('header-dropdown-username').contains('Test User');
     });
@@ -130,7 +138,7 @@ describe('User Sign-up and Login', function () {
     it('should redirect to the dashboard page when a token exists in query', function () {
       cy.initializeSession({ disableLocalStorage: true }).then((session) => {
         cy.visit('/auth/login?token=' + session.token);
-        cy.location('pathname').should('equal', '/templates');
+        cy.location('pathname').should('equal', '/workflows');
       });
     });
 
@@ -145,7 +153,7 @@ describe('User Sign-up and Login', function () {
       cy.getByTestId('email').type('test-user-1@example.com');
       cy.getByTestId('password').type('123qwe!@#');
       cy.getByTestId('submit-btn').click();
-      cy.location('pathname').should('equal', '/templates');
+      cy.location('pathname').should('equal', '/workflows');
     });
 
     it('should show incorrect email or password error when authenticating with bad credentials', function () {
@@ -189,7 +197,7 @@ describe('User Sign-up and Login', function () {
       cy.getByTestId('password').type('123qwe!@#');
       cy.getByTestId('submit-btn').click();
 
-      cy.location('pathname').should('equal', '/templates');
+      cy.location('pathname').should('equal', '/workflows');
 
       // setting current time in future, to simulate expired token
       const ONE_MINUTE = 1000 * 60; // adding 1 minute to be sure that token is expired

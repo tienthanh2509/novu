@@ -1,7 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { HealthCheck, HealthCheckService, HttpHealthIndicator } from '@nestjs/terminus';
-import { DalService } from '@novu/dal';
+import { HealthCheck, HealthCheckResult, HealthCheckService, HealthIndicatorFunction } from '@nestjs/terminus';
+import {
+  CacheServiceHealthIndicator,
+  DalServiceHealthIndicator,
+  WorkflowQueueServiceHealthIndicator,
+} from '@novu/application-generic';
+
 import { version } from '../../../package.json';
 
 @Controller('health-check')
@@ -9,21 +14,17 @@ import { version } from '../../../package.json';
 export class HealthController {
   constructor(
     private healthCheckService: HealthCheckService,
-    private healthIndicator: HttpHealthIndicator,
-    private dalService: DalService
+    private cacheHealthIndicator: CacheServiceHealthIndicator,
+    private dalHealthIndicator: DalServiceHealthIndicator,
+    private workflowQueueHealthIndicator: WorkflowQueueServiceHealthIndicator
   ) {}
 
   @Get()
   @HealthCheck()
-  healthCheck() {
-    return this.healthCheckService.check([
-      async () => {
-        return {
-          db: {
-            status: this.dalService.connection.readyState === 1 ? 'up' : 'down',
-          },
-        };
-      },
+  healthCheck(): Promise<HealthCheckResult> {
+    const checks: HealthIndicatorFunction[] = [
+      async () => this.dalHealthIndicator.isHealthy(),
+      async () => this.workflowQueueHealthIndicator.isHealthy(),
       async () => {
         return {
           apiVersion: {
@@ -32,6 +33,12 @@ export class HealthController {
           },
         };
       },
-    ]);
+    ];
+
+    if (process.env.ELASTICACHE_CLUSTER_SERVICE_HOST) {
+      checks.push(async () => this.cacheHealthIndicator.isHealthy());
+    }
+
+    return this.healthCheckService.check(checks);
   }
 }

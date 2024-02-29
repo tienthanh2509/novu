@@ -1,9 +1,8 @@
-import React, { useEffect } from 'react';
-
-import { QuickStartWrapper } from '../components/QuickStartWrapper';
-import { Cards } from '../components/Cards';
-import { Stack } from '@mantine/core';
+import { useEffect } from 'react';
 import { useSegment } from '../../../components/providers/SegmentProvider';
+import { InAppSandbox, SandboxFooter } from '../../../components/quick-start/in-app-onboarding';
+import { ROUTES } from '../../../constants/routes.enum';
+import { QuickStartWrapper } from '../components/QuickStartWrapper';
 import { FlowTypeEnum, OnBoardingAnalyticsEnum } from '../consts';
 
 export function NotificationCenter() {
@@ -11,38 +10,16 @@ export function NotificationCenter() {
 
   useEffect(() => {
     segment.track(OnBoardingAnalyticsEnum.FLOW_SELECTED, { flow: FlowTypeEnum.IN_APP });
-  }, []);
+  }, [segment]);
 
   return (
-    <QuickStartWrapper secondaryTitle={'How would you like to start?'}>
-      <Cards
-        cells={[
-          {
-            description: <InAppDescription />,
-            navigateTo: '/quickstart/notification-center/set-up',
-          },
-          {
-            description: <DemoDescription />,
-            navigateTo: '/quickstart/notification-center/set-up/demo',
-          },
-        ]}
-      />
+    <QuickStartWrapper
+      title="In-App Notification Center Sandbox"
+      secondaryTitle="Play around with the In-App sandbox. Click to trigger a notification."
+      goBackPath={ROUTES.GET_STARTED}
+      footer={<SandboxFooter />}
+    >
+      <InAppSandbox />
     </QuickStartWrapper>
-  );
-}
-
-export function InAppDescription() {
-  return (
-    <Stack align="center" spacing="xs">
-      <div style={{ textAlign: 'center', lineHeight: '26px' }}>Add to existing app</div>
-    </Stack>
-  );
-}
-
-export function DemoDescription() {
-  return (
-    <Stack align="center" spacing="xs">
-      <div style={{ textAlign: 'center', lineHeight: '26px' }}>Add to a demo app</div>
-    </Stack>
   );
 }

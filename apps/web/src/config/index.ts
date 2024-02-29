@@ -1,39 +1,37 @@
-import { isBrowser } from '../utils';
-import { getContextPath, NovuComponentEnum } from '@novu/shared';
+import {
+  API_ROOT,
+  WS_URL,
+  SENTRY_DSN,
+  ENV,
+  BLUEPRINTS_API_URL,
+  APP_ID,
+  WIDGET_EMBED_PATH,
+  IS_DOCKER_HOSTED,
+  REACT_APP_VERSION,
+  INTERCOM_APP_ID,
+  CONTEXT_PATH,
+  WEBHOOK_URL,
+  MAIL_SERVER_DOMAIN,
+  LAUNCH_DARKLY_CLIENT_SIDE_ID,
+  FEATURE_FLAGS,
+} from '@novu/shared-web';
 
-declare global {
-  interface Window {
-    _env_: any;
-  }
-}
+export {
+  API_ROOT,
+  WS_URL,
+  SENTRY_DSN,
+  ENV,
+  BLUEPRINTS_API_URL,
+  APP_ID,
+  WIDGET_EMBED_PATH,
+  IS_DOCKER_HOSTED,
+  REACT_APP_VERSION,
+  INTERCOM_APP_ID,
+  CONTEXT_PATH,
+  WEBHOOK_URL,
+  MAIL_SERVER_DOMAIN,
+  LAUNCH_DARKLY_CLIENT_SIDE_ID,
+  FEATURE_FLAGS,
+};
 
-const isCypress = (isBrowser() && (window as any).Cypress) || (isBrowser() && (window as any).parent.Cypress);
-
-export const API_ROOT =
-  window._env_.REACT_APP_API_URL || isCypress
-    ? window._env_.REACT_APP_API_URL || process.env.REACT_APP_API_URL || 'http://localhost:1336'
-    : window._env_.REACT_APP_API_URL || process.env.REACT_APP_API_URL || 'http://localhost:3000';
-
-export const WS_URL = isCypress
-  ? window._env_.REACT_APP_WS_URL || process.env.REACT_APP_WS_URL || 'http://localhost:1340'
-  : window._env_.REACT_APP_WS_URL || process.env.REACT_APP_WS_URL || 'http://localhost:3002';
-
-export const SENTRY_DSN = window._env_.REACT_APP_SENTRY_DSN || process.env.REACT_APP_SENTRY_DSN;
-
-export const ENV = window._env_.REACT_APP_ENVIRONMENT || process.env.REACT_APP_ENVIRONMENT;
-
-export const APP_ID = window._env_.REACT_APP_NOVU_APP_ID || process.env.REACT_APP_NOVU_APP_ID;
-
-export const WIDGET_EMBED_PATH =
-  window._env_.REACT_APP_WIDGET_EMBED_PATH ||
-  process.env.REACT_APP_WIDGET_EMBED_PATH ||
-  'http://localhost:4701/embed.umd.min.js';
-
-export const IS_DOCKER_HOSTED =
-  window._env_.REACT_APP_DOCKER_HOSTED_ENV || process.env.REACT_APP_DOCKER_HOSTED_ENV === 'true';
-
-export const INTERCOM_APP_ID = window._env_.REACT_APP_INTERCOM_APP_ID || process.env.REACT_APP_INTERCOM_APP_ID;
-
-export const CONTEXT_PATH = getContextPath(NovuComponentEnum.WEB);
-
-export const LOGROCKET_ID = (window._env_.REACT_APP_LOGROCKET_ID || process.env.REACT_APP_LOGROCKET_ID) ?? '';
+export const IS_EU_ENV = (ENV === 'production' || ENV === 'prod') && API_ROOT.includes('eu.api.novu.co');

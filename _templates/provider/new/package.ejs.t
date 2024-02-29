@@ -5,7 +5,7 @@
 
 {
   "name": "@novu/<%= name %>",
-  "version": "^0.12.0",
+  "version": "<%= version %>",
   "description": "A <%= name %> wrapper for novu",
   "main": "build/main/index.js",
   "typings": "build/main/index.d.ts",
@@ -22,8 +22,8 @@
     "fix": "run-s fix:*",
     "fix:prettier": "prettier \"src/**/*.ts\" --write",
     "fix:lint": "eslint src --ext .ts --fix",
-    "test": "run-s build test:*",
-    "test:lint": "eslint src --ext .ts",
+    "test": "run-s test:*",
+    "lint": "eslint src --ext .ts",
     "test:unit": "jest src",
     "watch:build": "tsc -p tsconfig.json -w",
     "watch:test": "jest src --watch",
@@ -33,18 +33,13 @@
   "publishConfig": {
     "access": "public"
   },
-  "engines": {
-    "node": ">=13.0.0 <17.0.0",
-    "pnpm": "^7.26.0"
-  },
   "dependencies": {
-    "@novu/stateless": "^0.12.0"
+    "@novu/stateless": "<%= version %>"
   },
   "devDependencies": {
     "@istanbuljs/nyc-config-typescript": "~1.0.1",
     "@types/jest": "~27.5.2",
     "cspell": "~6.19.2",
-    "cz-conventional-changelog": "~3.3.0",
     "jest": "~27.5.1",
     "npm-run-all": "^4.1.5",
     "nyc": "~15.1.0",

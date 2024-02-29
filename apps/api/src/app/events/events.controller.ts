@@ -1,8 +1,14 @@
-import { IJwtPayload, ISubscribersDefine } from '@novu/shared';
-import { TriggerRecipientSubscriber } from '@novu/node';
 import { Body, Controller, Delete, Param, Post, Scope, UseGuards } from '@nestjs/common';
-import { ApiCreatedResponse, ApiExcludeEndpoint, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  AddressingTypeEnum,
+  ApiRateLimitCategoryEnum,
+  ApiRateLimitCostEnum,
+  IJwtPayload,
+  TriggerRequestCategoryEnum,
+} from '@novu/shared';
+import { SendTestEmail, SendTestEmailCommand } from '@novu/application-generic';
 
 import {
   BulkTriggerEventDto,
@@ -11,18 +17,20 @@ import {
   TriggerEventResponseDto,
   TriggerEventToAllRequestDto,
 } from './dtos';
-import { EventsPerformanceService } from './services/performance-service';
 import { CancelDelayed, CancelDelayedCommand } from './usecases/cancel-delayed';
-import { SendMessageCommand, SendTestEmail, SendTestEmailCommand } from './usecases/send-message';
-import { MapTriggerRecipients } from './usecases/map-trigger-recipients';
-import { ParseEventRequest, ParseEventRequestCommand } from './usecases/parse-event-request';
+import { ParseEventRequest, ParseEventRequestMulticastCommand } from './usecases/parse-event-request';
 import { ProcessBulkTrigger, ProcessBulkTriggerCommand } from './usecases/process-bulk-trigger';
 import { TriggerEventToAll, TriggerEventToAllCommand } from './usecases/trigger-event-to-all';
 
 import { UserSession } from '../shared/framework/user.decorator';
 import { ExternalApiAccessible } from '../auth/framework/external-api.decorator';
-import { JwtAuthGuard } from '../auth/framework/auth.guard';
+import { UserAuthGuard } from '../auth/framework/user.auth.guard';
+import { ApiCommonResponses, ApiResponse, ApiOkResponse } from '../shared/framework/response.decorator';
+import { DataBooleanDto } from '../shared/dtos/data-wrapper-dto';
+import { ThrottlerCategory, ThrottlerCost } from '../rate-limiting/guards';
 
+@ThrottlerCategory(ApiRateLimitCategoryEnum.TRIGGER)
+@ApiCommonResponses()
 @Controller({
   path: 'events',
   scope: Scope.REQUEST,
@@ -30,35 +38,22 @@ import { JwtAuthGuard } from '../auth/framework/auth.guard';
 @ApiTags('Events')
 export class EventsController {
   constructor(
-    private mapTriggerRecipients: MapTriggerRecipients,
     private cancelDelayedUsecase: CancelDelayed,
     private triggerEventToAll: TriggerEventToAll,
     private sendTestEmail: SendTestEmail,
     private parseEventRequest: ParseEventRequest,
-    private processBulkTriggerUsecase: ProcessBulkTrigger,
-    protected performanceService: EventsPerformanceService
+    private processBulkTriggerUsecase: ProcessBulkTrigger
   ) {}
 
   @ExternalApiAccessible()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(UserAuthGuard)
   @Post('/trigger')
-  @ApiCreatedResponse({
-    type: TriggerEventResponseDto,
-    content: {
-      '200': {
-        example: {
-          acknowledged: true,
-          status: 'processed',
-          transactionId: 'd2239acb-e879-4bdb-ab6f-365b43278d8f',
-        },
-      },
-    },
-  })
+  @ApiResponse(TriggerEventResponseDto, 201)
   @ApiOperation({
     summary: 'Trigger event',
     description: `
-    Trigger event is the main (and the only) way to send notification to subscribers. 
-    The trigger identifier is used to match the particular template associated with it. 
+    Trigger event is the main (and only) way to send notifications to subscribers. 
+    The trigger identifier is used to match the particular workflow associated with it. 
     Additional information can be passed according the body interface below.
     `,
   })
@@ -66,50 +61,31 @@ export class EventsController {
     @UserSession() user: IJwtPayload,
     @Body() body: TriggerEventRequestDto
   ): Promise<TriggerEventResponseDto> {
-    const mark = this.performanceService.buildEndpointTriggerEventMark(body.transactionId as string);
-
     const result = await this.parseEventRequest.execute(
-      ParseEventRequestCommand.create({
+      ParseEventRequestMulticastCommand.create({
         userId: user._id,
         environmentId: user.environmentId,
         organizationId: user.organizationId,
         identifier: body.name,
-        payload: body.payload,
+        payload: body.payload || {},
         overrides: body.overrides || {},
         to: body.to,
         actor: body.actor,
+        tenant: body.tenant,
         transactionId: body.transactionId,
+        addressingType: AddressingTypeEnum.MULTICAST,
+        requestCategory: TriggerRequestCategoryEnum.SINGLE,
       })
     );
-
-    this.performanceService.setEnd(mark);
 
     return result as unknown as TriggerEventResponseDto;
   }
 
   @ExternalApiAccessible()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(UserAuthGuard)
+  @ThrottlerCost(ApiRateLimitCostEnum.BULK)
   @Post('/trigger/bulk')
-  @ApiCreatedResponse({
-    type: TriggerEventResponseDto,
-    isArray: true,
-    content: {
-      '200': {
-        example: [
-          {
-            acknowledged: true,
-            status: 'processed',
-            transactionId: 'd2239acb-e879-4bdb-ab6f-365b43278d8f',
-          },
-          {
-            acknowledged: true,
-            status: 'processed',
-            transactionId: 'd2239acb-e879-4bdb-ab6f-115b43278d12',
-          },
-        ],
-      },
-    },
-  })
+  @ApiResponse(TriggerEventResponseDto, 201, true)
   @ApiOperation({
     summary: 'Bulk trigger event',
     description: `
@@ -132,20 +108,10 @@ export class EventsController {
   }
 
   @ExternalApiAccessible()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(UserAuthGuard)
+  @ThrottlerCost(ApiRateLimitCostEnum.BULK)
   @Post('/trigger/broadcast')
-  @ApiCreatedResponse({
-    type: TriggerEventResponseDto,
-    content: {
-      '200': {
-        example: {
-          acknowledged: true,
-          status: 'processed',
-          transactionId: 'd2239acb-e879-4bdb-ab6f-365b43278d8f',
-        },
-      },
-    },
-  })
+  @ApiResponse(TriggerEventResponseDto)
   @ApiOperation({
     summary: 'Broadcast event to all',
     description: `Trigger a broadcast event to all existing subscribers, could be used to send announcements, etc.
@@ -156,7 +122,6 @@ export class EventsController {
     @Body() body: TriggerEventToAllRequestDto
   ): Promise<TriggerEventResponseDto> {
     const transactionId = body.transactionId || uuidv4();
-    const mappedActor = body.actor ? this.mapActor(body.actor) : null;
 
     return this.triggerEventToAll.execute(
       TriggerEventToAllCommand.create({
@@ -165,14 +130,15 @@ export class EventsController {
         organizationId: user.organizationId,
         identifier: body.name,
         payload: body.payload,
+        tenant: body.tenant,
         transactionId,
         overrides: body.overrides || {},
-        actor: mappedActor,
+        actor: body.actor,
       })
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(UserAuthGuard)
   @Post('/test/email')
   @ApiExcludeEndpoint()
   async testEmailMessage(@UserSession() user: IJwtPayload, @Body() body: TestSendEmailRequestDto): Promise<void> {
@@ -193,10 +159,10 @@ export class EventsController {
   }
 
   @ExternalApiAccessible()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(UserAuthGuard)
   @Delete('/trigger/:transactionId')
   @ApiOkResponse({
-    type: Boolean,
+    type: DataBooleanDto,
   })
   @ApiOperation({
     summary: 'Cancel triggered event',
@@ -217,11 +183,5 @@ export class EventsController {
         transactionId,
       })
     );
-  }
-
-  private mapActor(actor?: TriggerRecipientSubscriber | null): ISubscribersDefine | null {
-    if (!actor) return null;
-
-    return this.mapTriggerRecipients.mapSubscriber(actor);
   }
 }

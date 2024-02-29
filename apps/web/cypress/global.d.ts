@@ -35,6 +35,8 @@ declare namespace Cypress {
     initializeSession(settings?: {
       noEnvironment?: boolean;
       disableLocalStorage?: boolean;
+      showOnBoardingTour?: boolean;
+      noTemplates?: boolean;
       partialTemplate?: Partial<ICreateNotificationTemplateDto>;
     }): Chainable<Response>;
 
@@ -44,6 +46,8 @@ declare namespace Cypress {
     inviteUser(email: string): Chainable<Response>;
 
     loginWithGitHub(): Chainable<any>;
+
+    makeBlueprints(): Chainable<any>;
 
     mount: typeof IMountType;
   }

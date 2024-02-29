@@ -3,6 +3,7 @@
 
 import { MemberRoleEnum, MemberStatusEnum } from '@novu/shared';
 import 'cypress-wait-until';
+import 'cypress-file-upload';
 
 Cypress.Commands.add('getByTestId', (selector, ...args) => {
   return cy.get(`[data-test-id=${selector}]`, ...args);
@@ -13,8 +14,8 @@ Cypress.Commands.add('getBySelectorLike', (selector, ...args) => {
 });
 
 Cypress.Commands.add('waitLoadEnv', (beforeWait: () => void): void => {
-  cy.intercept('GET', 'http://localhost:1336/v1/environments').as('environments');
-  cy.intercept('GET', 'http://localhost:1336/v1/environments/me').as('environments-me');
+  cy.intercept('GET', '**/v1/environments').as('environments');
+  cy.intercept('GET', '**/v1/environments/me').as('environments-me');
 
   beforeWait && beforeWait();
 
@@ -22,17 +23,19 @@ Cypress.Commands.add('waitLoadEnv', (beforeWait: () => void): void => {
 });
 
 Cypress.Commands.add('waitLoadTemplatePage', (beforeWait: () => void): void => {
-  cy.intercept('GET', 'http://localhost:1336/v1/environments').as('environments');
-  cy.intercept('GET', 'http://localhost:1336/v1/environments/me').as('environments-me');
-  cy.intercept('GET', 'http://localhost:1336/v1/notification-groups').as('notification-groups');
-  cy.intercept('GET', 'http://localhost:1336/v1/changes/count').as('changes-count');
-  cy.intercept('GET', 'http://localhost:1336/v1/integrations/active').as('active-integrations');
-  cy.intercept('GET', 'http://localhost:1336/v1/users/me').as('me');
+  cy.intercept('GET', '**/v1/environments').as('environments');
+  cy.intercept('GET', '**/v1/organizations').as('organizations');
+  cy.intercept('GET', '**/v1/environments/me').as('environments-me');
+  cy.intercept('GET', '**/v1/notification-groups').as('notification-groups');
+  cy.intercept('GET', '**/v1/changes/count').as('changes-count');
+  cy.intercept('GET', '**/v1/integrations/active').as('active-integrations');
+  cy.intercept('GET', '**/v1/users/me').as('me');
 
   beforeWait && beforeWait();
 
   cy.wait([
     '@environments',
+    '@organizations',
     '@environments-me',
     '@notification-groups',
     '@changes-count',
@@ -71,7 +74,11 @@ Cypress.Commands.add('clickNodeButton', (selector: string) => {
 
 Cypress.Commands.add(
   'initializeSession',
-  (settings: { disableLocalStorage?: boolean } = { disableLocalStorage: false }) => {
+  (
+    settings: { disableLocalStorage?: boolean; noTemplates?: boolean; showOnBoardingTour?: boolean } = {
+      disableLocalStorage: false,
+    }
+  ) => {
     return cy.task('getSession', settings).then((response: any) => {
       if (!settings.disableLocalStorage) {
         window.localStorage.setItem('auth_token', response.token);
@@ -81,6 +88,10 @@ Cypress.Commands.add(
     });
   }
 );
+
+Cypress.Commands.add('makeBlueprints', () => {
+  return cy.task('makeBlueprints');
+});
 
 Cypress.Commands.add('inviteUser', (email: string) => {
   return cy

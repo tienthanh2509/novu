@@ -1,3 +1,5 @@
+import { expect } from 'chai';
+import axios from 'axios';
 import {
   NotificationTemplateEntity,
   SubscriberEntity,
@@ -6,11 +8,16 @@ import {
   NotificationTemplateRepository,
 } from '@novu/dal';
 import { UserSession, SubscribersService } from '@novu/testing';
-import { expect } from 'chai';
-import axios from 'axios';
-import { ChannelTypeEnum, ISubscribersDefine, StepTypeEnum } from '@novu/shared';
+import { ChannelTypeEnum, ISubscribersDefine, IUpdateNotificationTemplateDto, StepTypeEnum } from '@novu/shared';
+import {
+  buildNotificationTemplateIdentifierKey,
+  buildNotificationTemplateKey,
+  CacheInMemoryProviderService,
+  CacheService,
+  InvalidateCacheService,
+} from '@novu/application-generic';
+
 import { UpdateSubscriberPreferenceRequestDto } from '../../widgets/dtos/update-subscriber-preference-request.dto';
-import { CacheKeyPrefixEnum, CacheService, InvalidateCacheService } from '../../shared/services/cache';
 
 const axiosInstance = axios.create();
 
@@ -19,21 +26,25 @@ describe('Trigger event - process subscriber /v1/events/trigger (POST)', functio
   let template: NotificationTemplateEntity;
   let subscriber: SubscriberEntity;
   let subscriberService: SubscribersService;
-
-  const invalidateCache = new InvalidateCacheService(
-    new CacheService({
-      host: process.env.REDIS_CACHE_SERVICE_HOST as string,
-      port: process.env.REDIS_CACHE_SERVICE_PORT as string,
-    })
-  );
+  let cacheService: CacheService;
+  let invalidateCache: InvalidateCacheService;
+  let cacheInMemoryProviderService: CacheInMemoryProviderService;
 
   const subscriberRepository = new SubscriberRepository();
   const messageRepository = new MessageRepository();
   const notificationTemplateRepository = new NotificationTemplateRepository();
 
+  before(async () => {
+    cacheInMemoryProviderService = new CacheInMemoryProviderService();
+    cacheService = new CacheService(cacheInMemoryProviderService);
+    await cacheService.initialize();
+    invalidateCache = new InvalidateCacheService(cacheService);
+  });
+
   beforeEach(async () => {
     session = new UserSession();
     await session.initialize();
+
     template = await session.createTemplate();
     subscriberService = new SubscribersService(session.organization._id, session.environment._id);
     subscriber = await subscriberService.createSubscriber();
@@ -184,6 +195,14 @@ describe('Trigger event - process subscriber /v1/events/trigger (POST)', functio
 
     expect(message.length).to.equal(2);
 
+    const notificationTemplateKey = buildNotificationTemplateKey({
+      _id: template._id,
+      _environmentId: session.environment._id,
+    });
+    await invalidateCache.invalidateByKey({
+      key: notificationTemplateKey,
+    });
+
     const updateData = {
       channel: {
         type: ChannelTypeEnum.IN_APP,
@@ -193,15 +212,7 @@ describe('Trigger event - process subscriber /v1/events/trigger (POST)', functio
 
     await updateSubscriberPreference(updateData, session.subscriberToken, template._id);
 
-    await invalidateCache.clearCache({
-      storeKeyPrefix: [CacheKeyPrefixEnum.NOTIFICATION_TEMPLATE],
-      credentials: {
-        _id: template._id,
-        environmentId: session.environment._id,
-      },
-    });
-
-    await notificationTemplateRepository.update(
+    const rest = await notificationTemplateRepository.update(
       {
         _id: template._id,
         _environmentId: session.environment._id,
@@ -248,7 +259,7 @@ async function updateSubscriberPreference(
   subscriberToken: string,
   templateId: string
 ) {
-  return await axios.patch(`http://localhost:${process.env.PORT}/v1/widgets/preferences/${templateId}`, data, {
+  return await axios.patch(`http://127.0.0.1:${process.env.PORT}/v1/widgets/preferences/${templateId}`, data, {
     headers: {
       Authorization: `Bearer ${subscriberToken}`,
     },

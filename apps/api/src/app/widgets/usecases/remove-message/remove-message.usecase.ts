@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   MessageEntity,
   DalException,
@@ -7,29 +7,45 @@ import {
   SubscriberEntity,
   MemberRepository,
 } from '@novu/dal';
-import { ChannelTypeEnum } from '@novu/shared';
-import { AnalyticsService } from '@novu/application-generic';
+import {
+  WebSocketsQueueService,
+  AnalyticsService,
+  InvalidateCacheService,
+  buildFeedKey,
+  buildMessageCountKey,
+} from '@novu/application-generic';
+import { WebSocketEventEnum } from '@novu/shared';
 
-import { CacheKeyPrefixEnum } from '../../../shared/services/cache';
-import { QueueService } from '../../../shared/services/queue';
-import { ANALYTICS_SERVICE } from '../../../shared/shared.module';
 import { RemoveMessageCommand } from './remove-message.command';
-import { InvalidateCache } from '../../../shared/interceptors';
 import { ApiException } from '../../../shared/exceptions/api.exception';
 import { MarkEnum } from '../mark-message-as/mark-message-as.command';
 
 @Injectable()
 export class RemoveMessage {
   constructor(
+    private invalidateCache: InvalidateCacheService,
     private messageRepository: MessageRepository,
-    private queueService: QueueService,
-    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService,
+    private webSocketsQueueService: WebSocketsQueueService,
+    private analyticsService: AnalyticsService,
     private subscriberRepository: SubscriberRepository,
     private memberRepository: MemberRepository
   ) {}
 
-  @InvalidateCache([CacheKeyPrefixEnum.MESSAGE_COUNT, CacheKeyPrefixEnum.FEED])
   async execute(command: RemoveMessageCommand): Promise<MessageEntity> {
+    await this.invalidateCache.invalidateQuery({
+      key: buildFeedKey().invalidate({
+        subscriberId: command.subscriberId,
+        _environmentId: command.environmentId,
+      }),
+    });
+
+    await this.invalidateCache.invalidateQuery({
+      key: buildMessageCountKey().invalidate({
+        subscriberId: command.subscriberId,
+        _environmentId: command.environmentId,
+      }),
+    });
+
     const subscriber = await this.subscriberRepository.findBySubscriberId(command.environmentId, command.subscriberId);
     if (!subscriber) throw new NotFoundException(`Subscriber ${command.subscriberId} not found`);
 
@@ -65,13 +81,10 @@ export class RemoveMessage {
     return deletedMessage;
   }
 
-  private async updateServices(command: RemoveMessageCommand, subscriber, message, marked: string) {
+  private async updateServices(command: RemoveMessageCommand, subscriber, message, marked: MarkEnum) {
     const admin = await this.memberRepository.getOrganizationAdminAccount(command.organizationId);
-    const count = await this.messageRepository.getCount(command.environmentId, subscriber._id, ChannelTypeEnum.IN_APP, {
-      [marked]: false,
-    });
 
-    this.updateSocketCount(subscriber, count, marked);
+    this.updateSocketCount(subscriber, marked);
 
     if (admin) {
       this.analyticsService.track(`Removed Message - [Notification Center]`, admin._userId, {
@@ -82,16 +95,17 @@ export class RemoveMessage {
     }
   }
 
-  private updateSocketCount(subscriber: SubscriberEntity, count: number, mark: string) {
-    const eventMessage = `un${mark}_count_changed`;
-    const countKey = `un${mark}Count`;
+  private updateSocketCount(subscriber: SubscriberEntity, mark: MarkEnum) {
+    const eventMessage = mark === MarkEnum.READ ? WebSocketEventEnum.UNREAD : WebSocketEventEnum.UNSEEN;
 
-    this.queueService.wsSocketQueue.add({
-      event: eventMessage,
-      userId: subscriber._id,
-      payload: {
-        [countKey]: count,
+    this.webSocketsQueueService.add({
+      name: 'sendMessage',
+      data: {
+        event: eventMessage,
+        userId: subscriber._id,
+        _environmentId: subscriber._environmentId,
       },
+      groupId: subscriber._organizationId,
     });
   }
 }

@@ -17,6 +17,10 @@ const userSchema = new Schema<UserDBModel>(
       reqInDay: Schema.Types.Number,
     },
     showOnBoarding: Schema.Types.Boolean,
+    showOnBoardingTour: {
+      type: Schema.Types.Number,
+      default: 0,
+    },
     tokens: [
       {
         providerId: Schema.Types.String,
@@ -33,6 +37,10 @@ const userSchema = new Schema<UserDBModel>(
       times: Schema.Types.Number,
       lastFailedAttempt: Schema.Types.Date,
     },
+    servicesHashes: {
+      intercom: Schema.Types.String,
+    },
+    jobTitle: Schema.Types.String,
   },
   schemaOptions
 );

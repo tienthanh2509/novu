@@ -1,6 +1,6 @@
 import { Inject, Injectable, Scope } from '@nestjs/common';
 import { OrganizationEntity, OrganizationRepository, UserRepository } from '@novu/dal';
-import { MemberRoleEnum } from '@novu/shared';
+import { ApiServiceLevelEnum, JobTitleEnum, MemberRoleEnum } from '@novu/shared';
 import { AnalyticsService } from '@novu/application-generic';
 
 import { CreateEnvironmentCommand } from '../../../environments/usecases/create-environment/create-environment.command';
@@ -10,8 +10,10 @@ import { GetOrganization } from '../get-organization/get-organization.usecase';
 import { AddMemberCommand } from '../membership/add-member/add-member.command';
 import { AddMember } from '../membership/add-member/add-member.usecase';
 import { CreateOrganizationCommand } from './create-organization.command';
-import { ANALYTICS_SERVICE } from '../../../shared/shared.module';
+
 import { ApiException } from '../../../shared/exceptions/api.exception';
+import { CreateNovuIntegrations } from '../../../integrations/usecases/create-novu-integrations/create-novu-integrations.usecase';
+import { CreateNovuIntegrationsCommand } from '../../../integrations/usecases/create-novu-integrations/create-novu-integrations.command';
 
 @Injectable({
   scope: Scope.REQUEST,
@@ -23,19 +25,25 @@ export class CreateOrganization {
     private readonly getOrganizationUsecase: GetOrganization,
     private readonly userRepository: UserRepository,
     private readonly createEnvironmentUsecase: CreateEnvironment,
-    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService
+    private readonly createNovuIntegrations: CreateNovuIntegrations,
+    private analyticsService: AnalyticsService
   ) {}
 
   async execute(command: CreateOrganizationCommand): Promise<OrganizationEntity> {
-    const organization = new OrganizationEntity();
-
-    organization.logo = command.logo;
-    organization.name = command.name;
-
     const user = await this.userRepository.findById(command.userId);
     if (!user) throw new ApiException('User not found');
 
-    const createdOrganization = await this.organizationRepository.create(organization);
+    const createdOrganization = await this.organizationRepository.create({
+      logo: command.logo,
+      name: command.name,
+      apiServiceLevel: ApiServiceLevelEnum.FREE,
+      domain: command.domain,
+      productUseCases: command.productUseCases,
+    });
+
+    if (command.jobTitle) {
+      await this.updateJobTitle(user, command.jobTitle);
+    }
 
     await this.addMemberUsecase.execute(
       AddMemberCommand.create({
@@ -53,12 +61,28 @@ export class CreateOrganization {
       })
     );
 
-    await this.createEnvironmentUsecase.execute(
+    await this.createNovuIntegrations.execute(
+      CreateNovuIntegrationsCommand.create({
+        environmentId: devEnv._id,
+        organizationId: devEnv._organizationId,
+        userId: user._id,
+      })
+    );
+
+    const prodEnv = await this.createEnvironmentUsecase.execute(
       CreateEnvironmentCommand.create({
         userId: user._id,
         name: 'Production',
         organizationId: createdOrganization._id,
         parentEnvironmentId: devEnv._id,
+      })
+    );
+
+    await this.createNovuIntegrations.execute(
+      CreateNovuIntegrationsCommand.create({
+        environmentId: prodEnv._id,
+        organizationId: prodEnv._organizationId,
+        userId: user._id,
       })
     );
 
@@ -76,5 +100,20 @@ export class CreateOrganization {
     );
 
     return organizationAfterChanges as OrganizationEntity;
+  }
+
+  private async updateJobTitle(user, jobTitle: JobTitleEnum) {
+    await this.userRepository.update(
+      {
+        _id: user._id,
+      },
+      {
+        $set: {
+          jobTitle: jobTitle,
+        },
+      }
+    );
+
+    this.analyticsService.setValue(user._id, 'jobTitle', jobTitle);
   }
 }

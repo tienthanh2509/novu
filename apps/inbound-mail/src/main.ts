@@ -7,6 +7,8 @@ import logger from './server/logger';
 import * as Sentry from '@sentry/node';
 import { version } from '../package.json';
 
+const LOG_CONTEXT = 'Main';
+
 const env = process.env;
 
 if (process.env.SENTRY_DSN) {
@@ -17,10 +19,10 @@ if (process.env.SENTRY_DSN) {
   });
 }
 
-mailin.start(
+export default mailin.start(
   {
     port: env.PORT || 25,
-    host: env.HOST || '0.0.0.0',
+    host: env.HOST || '127.0.0.1',
     disableDkim: env.disableDkim,
     disableSpf: env.disableSpf,
     disableSpamScore: env.disableSpamScore,

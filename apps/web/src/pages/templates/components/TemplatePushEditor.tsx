@@ -1,67 +1,93 @@
-import { Control, Controller, useFormContext } from 'react-hook-form';
+import { ChannelTypeEnum } from '@novu/shared';
+import { Controller, useFormContext } from 'react-hook-form';
 
-import { LackIntegrationError } from './LackIntegrationError';
-import type { IForm } from './formTypes';
-import { Textarea } from '../../../design-system';
-import { useEnvController, useVariablesManager } from '../../../hooks';
-import { VariableManager } from './VariableManager';
+import { Text } from '@novu/design-system';
+import { useHasActiveIntegrations, useVariablesManager } from '../../../hooks';
+import { useStepFormPath } from '../hooks/useStepFormPath';
+import { StepSettings } from '../workflow/SideBar/StepSettings';
+import { LackIntegrationAlert } from './LackIntegrationAlert';
+
+import { Flex, Grid, Stack } from '@mantine/core';
+import { useState } from 'react';
+import { PushPreview } from '../../../components/workflow/preview';
+import { useEditTemplateContent } from '../hooks/useEditTemplateContent';
+import { CustomCodeEditor } from './CustomCodeEditor';
+import { EditVariablesModal } from './EditVariablesModal';
+import { TranslateProductLead } from './TranslateProductLead';
+import { VariableManagementButton } from './VariableManagementButton';
 
 const templateFields = ['content', 'title'];
 
-export function TemplatePushEditor({
-  control,
-  index,
-  isIntegrationActive,
-}: {
-  control: Control<IForm>;
-  index: number;
-  errors: any;
-  isIntegrationActive: boolean;
-}) {
-  const { readonly } = useEnvController();
-  const {
-    formState: { errors },
-  } = useFormContext();
-  const variablesArray = useVariablesManager(index, templateFields);
+export function TemplatePushEditor() {
+  const [editVariablesModalOpened, setEditVariablesModalOpen] = useState(false);
+  const stepFormPath = useStepFormPath();
+  const { control } = useFormContext();
+  const variablesArray = useVariablesManager(templateFields);
+
+  const { isPreviewLoading, handleContentChange } = useEditTemplateContent();
+  const { hasActiveIntegration } = useHasActiveIntegrations({
+    channelType: ChannelTypeEnum.PUSH,
+  });
 
   return (
     <>
-      {!isIntegrationActive ? <LackIntegrationError channelType="Push" /> : null}
-      <Controller
-        name={`steps.${index}.template.title` as any}
-        defaultValue=""
-        control={control}
-        render={({ field }) => (
-          <Textarea
-            {...field}
-            data-test-id="pushNotificationTitle"
-            error={errors?.steps ? errors.steps[index]?.template?.title?.message : undefined}
-            disabled={readonly}
-            minRows={4}
-            value={field.value || ''}
-            label="Push message title"
-            placeholder="Add notification title here..."
+      {!hasActiveIntegration ? <LackIntegrationAlert channelType={ChannelTypeEnum.PUSH} /> : null}
+      <StepSettings />
+
+      <Grid gutter={24}>
+        <Grid.Col span={'auto'}>
+          <Stack spacing={32}>
+            <Controller
+              name={`${stepFormPath}.template.title` as any}
+              defaultValue=""
+              control={control}
+              render={({ field }) => (
+                <Stack spacing={8} data-test-id="push-title-container">
+                  <VariableManagementButton
+                    openEditVariablesModal={() => {
+                      setEditVariablesModalOpen(true);
+                    }}
+                    label="Title"
+                  />
+                  <CustomCodeEditor
+                    value={(field.value as string) || ''}
+                    onChange={(value) => {
+                      handleContentChange(value, field.onChange);
+                    }}
+                    height="128px"
+                  />
+                </Stack>
+              )}
+            />
+            <Controller
+              name={`${stepFormPath}.template.content` as any}
+              defaultValue=""
+              control={control}
+              render={({ field }) => (
+                <Stack spacing={8} data-test-id="push-content-container">
+                  <Text weight="bold">Message</Text>
+                  <CustomCodeEditor
+                    value={(field.value as string) || ''}
+                    onChange={(value) => {
+                      handleContentChange(value, field.onChange);
+                    }}
+                  />
+                </Stack>
+              )}
+            />
+          </Stack>
+          <EditVariablesModal
+            open={editVariablesModalOpened}
+            setOpen={setEditVariablesModalOpen}
+            variablesArray={variablesArray}
           />
-        )}
-      />
-      <Controller
-        name={`steps.${index}.template.content` as any}
-        defaultValue=""
-        control={control}
-        render={({ field }) => (
-          <Textarea
-            {...field}
-            data-test-id="pushNotificationContent"
-            error={errors?.steps ? errors.steps[index]?.template?.content?.message : undefined}
-            disabled={readonly}
-            minRows={4}
-            value={field.value || ''}
-            label="Push message content"
-            placeholder="Add notification content here..."
-          />
-        )}
-      />
-      <VariableManager index={index} variablesArray={variablesArray} />
+        </Grid.Col>
+        <Grid.Col span={'content'}>
+          <Flex justify="center">
+            <PushPreview showLoading={isPreviewLoading} showOverlay={false} />
+          </Flex>
+        </Grid.Col>
+      </Grid>
     </>
   );
 }

@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { MessageTemplateEntity, MessageTemplateRepository } from '@novu/dal';
-import { ChangeEntityTypeEnum } from '@novu/shared';
+import { ChangeEntityTypeEnum, IMessageAction } from '@novu/shared';
 
 import { CreateMessageTemplateCommand } from './create-message-template.command';
 import { sanitizeMessageContent } from '../../shared/sanitizer.service';
-import { CreateChange, CreateChangeCommand } from '../../../change/usecases';
 import { UpdateChange } from '../../../change/usecases/update-change/update-change';
 import { UpdateChangeCommand } from '../../../change/usecases/update-change/update-change.command';
 import { UpdateMessageTemplate } from '../update-message-template/update-message-template.usecase';
+import { ApiException, CreateChange, CreateChangeCommand } from '@novu/application-generic';
 
 @Injectable()
 export class CreateMessageTemplate {
@@ -18,7 +18,11 @@ export class CreateMessageTemplate {
   ) {}
 
   async execute(command: CreateMessageTemplateCommand): Promise<MessageTemplateEntity> {
-    let item = await this.messageTemplateRepository.create({
+    if ((command?.cta?.action as IMessageAction | undefined | '') === '') {
+      throw new ApiException('Please provide a valid CTA action');
+    }
+
+    let item: MessageTemplateEntity = await this.messageTemplateRepository.create({
       cta: command.cta,
       name: command.name,
       variables: command.variables ? UpdateMessageTemplate.mapVariables(command.variables) : undefined,
@@ -37,7 +41,13 @@ export class CreateMessageTemplate {
       actor: command.actor,
     });
 
-    item = (await this.messageTemplateRepository.findById(item._id)) as MessageTemplateEntity;
+    if (item?._id) {
+      item = (await this.messageTemplateRepository.findOne({
+        _id: item._id,
+        _organizationId: command.organizationId,
+      })) as MessageTemplateEntity;
+    }
+
     await this.createChange.execute(
       CreateChangeCommand.create({
         organizationId: command.organizationId,

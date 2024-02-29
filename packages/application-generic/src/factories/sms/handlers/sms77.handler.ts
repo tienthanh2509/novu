@@ -1,5 +1,4 @@
-import { ChannelTypeEnum } from '@novu/shared';
-import { ICredentials } from '@novu/dal';
+import { ChannelTypeEnum, ICredentials } from '@novu/shared';
 import { Sms77SmsProvider } from '@novu/sms77';
 import { BaseSmsHandler } from './base.handler';
 
@@ -8,11 +7,9 @@ export class Sms77Handler extends BaseSmsHandler {
     super('sms77', ChannelTypeEnum.SMS);
   }
   buildProvider(credentials: ICredentials) {
-    const config: { apiKey: string; from?: string } = {
+    this.provider = new Sms77SmsProvider({
       apiKey: credentials.apiKey,
       from: credentials.from,
-    };
-
-    this.provider = new Sms77SmsProvider(config);
+    });
   }
 }

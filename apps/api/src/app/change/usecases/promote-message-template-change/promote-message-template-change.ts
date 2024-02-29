@@ -35,6 +35,10 @@ export class PromoteMessageTemplateChange {
     });
 
     if (!item) {
+      if (newItem.deleted) {
+        return;
+      }
+
       return this.messageTemplateRepository.create({
         type: newItem.type,
         name: newItem.name,
@@ -42,9 +46,12 @@ export class PromoteMessageTemplateChange {
         content: newItem.content,
         contentType: newItem.contentType,
         title: newItem.title,
+        preheader: newItem.preheader,
+        senderName: newItem.senderName,
         cta: newItem.cta,
         active: newItem.active,
         actor: newItem.actor,
+        variables: newItem.variables,
         _parentId: newItem._id,
         _feedId: feed?._id,
         _layoutId: layout?._id,
@@ -52,6 +59,21 @@ export class PromoteMessageTemplateChange {
         _creatorId: command.userId,
         _organizationId: command.organizationId,
       });
+    }
+
+    const count = await this.messageTemplateRepository.count({
+      _organizationId: command.organizationId,
+      _id: command.item._id,
+    });
+
+    if (count === 0) {
+      await this.messageTemplateRepository.delete({
+        _id: item._id,
+        _environmentId: command.environmentId,
+        _organizationId: command.organizationId,
+      });
+
+      return;
     }
 
     return this.messageTemplateRepository.update(
@@ -67,8 +89,11 @@ export class PromoteMessageTemplateChange {
         contentType: newItem.contentType,
         title: newItem.title,
         cta: newItem.cta,
+        preheader: newItem.preheader,
+        senderName: newItem.senderName,
         active: newItem.active,
         actor: newItem.actor,
+        variables: newItem.variables,
         _feedId: feed?._id,
         _layoutId: layout?._id,
       }

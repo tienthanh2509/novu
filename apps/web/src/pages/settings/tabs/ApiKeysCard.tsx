@@ -3,22 +3,27 @@ import { useClipboard } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import styled from '@emotion/styled';
 
-import { Input, Tooltip } from '../../../design-system';
-import { Check, Copy } from '../../../design-system/icons';
+import { Input, Tooltip, colors, Check, Copy, inputStyles } from '@novu/design-system';
 import { getApiKeys } from '../../../api/environment';
-import { inputStyles } from '../../../design-system/config/inputs.styles';
 import { useEnvController } from '../../../hooks';
 import { Regenerate } from './components/Regenerate';
+import { When } from '../../../components/utils/When';
+import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons';
+import { useState } from 'react';
 
 export const ApiKeysCard = () => {
   const clipboardApiKey = useClipboard({ timeout: 1000 });
   const clipboardEnvironmentIdentifier = useClipboard({ timeout: 1000 });
+  const clipboardEnvironmentId = useClipboard({ timeout: 1000 });
   const { data: apiKeys, refetch: refetchApiKeys } = useQuery<{ key: string }[]>(['getApiKeys'], getApiKeys);
 
   const { environment } = useEnvController();
 
   const apiKey = apiKeys?.length ? apiKeys[0].key : '';
   const environmentIdentifier = environment?.identifier ? environment.identifier : '';
+  const environmentId = environment?._id ? environment._id : '';
+
+  const [hidden, setHidden] = useState(true);
 
   return (
     <>
@@ -30,22 +35,56 @@ export const ApiKeysCard = () => {
         >
           <Input
             readOnly
-            type={'password'}
+            type={hidden ? 'password' : 'text'}
+            rightSectionWidth={78}
             rightSection={
-              <Tooltip label={clipboardApiKey.copied ? 'Copied!' : 'Copy Key'}>
-                <ActionIcon
-                  data-test-id={'api-key-copy'}
-                  variant="transparent"
-                  onClick={() => clipboardApiKey.copy(apiKey)}
-                >
-                  {clipboardApiKey.copied ? <Check /> : <Copy />}
+              <>
+                <ActionIcon variant="transparent" onClick={() => setHidden(!hidden)}>
+                  <When truthy={hidden}>
+                    <EyeOutlined
+                      style={{
+                        color: colors.B60,
+                        fontSize: '16px',
+                      }}
+                    />
+                  </When>
+                  <When truthy={!hidden}>
+                    <EyeInvisibleOutlined
+                      style={{
+                        color: colors.B60,
+                        fontSize: '16px',
+                      }}
+                    />
+                  </When>
                 </ActionIcon>
-              </Tooltip>
+                <Tooltip label={clipboardApiKey.copied ? 'Copied!' : 'Copy Key'}>
+                  <ActionIcon
+                    data-test-id={'api-key-copy'}
+                    variant="transparent"
+                    onClick={() => clipboardApiKey.copy(apiKey)}
+                  >
+                    {clipboardApiKey.copied ? (
+                      <Check
+                        style={{
+                          color: colors.B60,
+                        }}
+                      />
+                    ) : (
+                      <Copy
+                        style={{
+                          color: colors.B60,
+                        }}
+                      />
+                    )}
+                  </ActionIcon>
+                </Tooltip>
+              </>
             }
             value={apiKey}
             data-test-id="api-key-container"
           />
         </MantineInput.Wrapper>
+        <Regenerate fetchApiKeys={refetchApiKeys} />
       </ParamContainer>
       <ParamContainer>
         <MantineInput.Wrapper
@@ -62,7 +101,19 @@ export const ApiKeysCard = () => {
                   data-test-id={'application-identifier-copy'}
                   onClick={() => clipboardEnvironmentIdentifier.copy(environmentIdentifier)}
                 >
-                  {clipboardEnvironmentIdentifier.copied ? <Check /> : <Copy />}
+                  {clipboardEnvironmentIdentifier.copied ? (
+                    <Check
+                      style={{
+                        color: colors.B60,
+                      }}
+                    />
+                  ) : (
+                    <Copy
+                      style={{
+                        color: colors.B60,
+                      }}
+                    />
+                  )}
                 </ActionIcon>
               </Tooltip>
             }
@@ -71,7 +122,38 @@ export const ApiKeysCard = () => {
           />
         </MantineInput.Wrapper>
       </ParamContainer>
-      <Regenerate fetchApiKeys={refetchApiKeys} />
+      <ParamContainer>
+        <MantineInput.Wrapper label="Environment ID" styles={inputStyles}>
+          <Input
+            readOnly
+            rightSection={
+              <Tooltip label={clipboardEnvironmentId.copied ? 'Copied!' : 'Copy Key'}>
+                <ActionIcon
+                  variant="transparent"
+                  data-test-id={'environment-id-copy'}
+                  onClick={() => clipboardEnvironmentId.copy(environmentId)}
+                >
+                  {clipboardEnvironmentId.copied ? (
+                    <Check
+                      style={{
+                        color: colors.B60,
+                      }}
+                    />
+                  ) : (
+                    <Copy
+                      style={{
+                        color: colors.B60,
+                      }}
+                    />
+                  )}
+                </ActionIcon>
+              </Tooltip>
+            }
+            value={environmentId}
+            data-test-id="environment-id"
+          />
+        </MantineInput.Wrapper>
+      </ParamContainer>
     </>
   );
 };

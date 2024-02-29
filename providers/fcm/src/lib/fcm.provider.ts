@@ -11,6 +11,7 @@ import {
   FcmOptions,
   getMessaging,
   Messaging,
+  WebpushConfig,
 } from 'firebase-admin/messaging';
 import crypto from 'crypto';
 
@@ -45,46 +46,55 @@ export class FcmPushProvider implements IPushProvider {
   async sendMessage(
     options: IPushOptions
   ): Promise<ISendMessageSuccessResponse> {
-    delete (options.overrides as { deviceTokens?: string[] })?.deviceTokens;
+    const {
+      deviceTokens: _,
+      type,
+      android,
+      apns,
+      fcmOptions,
+      webPush: webpush,
+      data,
+      ...overridesData
+    } = (options.overrides as IPushOptions['overrides'] & {
+      deviceTokens?: string[];
+      webPush: { [key: string]: { [key: string]: string } | string };
+    }) || {};
 
-    const overridesData = options.overrides || ({} as any);
-
-    const androidData: AndroidConfig = overridesData.android;
-    const apnsData: ApnsConfig = overridesData.apns;
-    const fcmOptionsData: FcmOptions = overridesData.fcmOptions;
-    delete overridesData.android;
-    delete overridesData.apns;
-    delete overridesData.fcmOptions;
+    const payload = this.cleanPayload(options.payload);
 
     let res;
 
-    if (overridesData?.type === 'data') {
-      delete (options.overrides as { type?: string })?.type;
+    if (type === 'data') {
       res = await this.messaging.sendMulticast({
         tokens: options.target,
-        data: options.payload as { [key: string]: string },
-        ...(androidData ? { android: androidData } : {}),
-        ...(apnsData ? { apns: apnsData } : {}),
-        ...(fcmOptionsData ? { fcmOptions: fcmOptionsData } : {}),
+        data: {
+          ...payload,
+          title: options.title,
+          body: options.content,
+          message: options.content,
+        },
+        android,
+        apns,
+        fcmOptions,
+        webpush,
       });
     } else {
-      const { data, ...overrides } = overridesData;
-
       res = await this.messaging.sendMulticast({
         tokens: options.target,
         notification: {
           title: options.title,
           body: options.content,
-          ...overrides,
+          ...overridesData,
         },
         data,
-        ...(androidData ? { android: androidData } : {}),
-        ...(apnsData ? { apns: apnsData } : {}),
-        ...(fcmOptionsData ? { fcmOptions: fcmOptionsData } : {}),
+        android,
+        apns,
+        fcmOptions,
+        webpush,
       });
     }
 
-    if (res.failureCount > 0) {
+    if (res.successCount === 0) {
       throw new Error(
         `Sending message failed due to "${
           res.responses.find((i) => i.success === false).error.message
@@ -96,8 +106,26 @@ export class FcmPushProvider implements IPushProvider {
     await deleteApp(app);
 
     return {
-      ids: res?.responses?.map((response) => response.messageId),
+      ids: res?.responses?.map((response, index) =>
+        response.success
+          ? response.messageId
+          : `${response.error.message}. Invalid token:- ${options.target[index]}`
+      ),
       date: new Date().toISOString(),
     };
+  }
+
+  private cleanPayload(payload: object): Record<string, string> {
+    const cleanedPayload: Record<string, string> = {};
+
+    Object.keys(payload).forEach((key) => {
+      if (typeof payload[key] === 'string') {
+        cleanedPayload[key] = payload[key];
+      } else {
+        cleanedPayload[key] = JSON.stringify(payload[key]);
+      }
+    });
+
+    return cleanedPayload;
   }
 }

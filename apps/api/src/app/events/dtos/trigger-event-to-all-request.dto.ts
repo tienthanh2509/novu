@@ -1,8 +1,9 @@
-import { IsDefined, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsDefined, IsObject, IsOptional, IsString, ValidateIf, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
-import { TriggerRecipientSubscriber } from '@novu/node';
+import { TriggerRecipientSubscriber, TriggerTenantContext } from '@novu/shared';
 
-import { SubscriberPayloadDto } from './trigger-event-request.dto';
+import { SubscriberPayloadDto, TenantPayloadDto } from './trigger-event-request.dto';
 
 export class TriggerEventToAllRequestDto {
   @ApiProperty({
@@ -30,7 +31,9 @@ export class TriggerEventToAllRequestDto {
     description: 'This could be used to override provider specific configurations',
     example: {
       fcm: {
-        color: '#fff',
+        data: {
+          key: 'value',
+        },
       },
     },
   })
@@ -55,5 +58,23 @@ export class TriggerEventToAllRequestDto {
     ],
   })
   @IsOptional()
+  @ValidateIf((_, value) => typeof value !== 'string')
+  @ValidateNested()
+  @Type(() => SubscriberPayloadDto)
   actor?: TriggerRecipientSubscriber;
+
+  @ApiProperty({
+    description: `It is used to specify a tenant context during trigger event.
+    If a new tenant object is provided, we will create a new tenant.
+    `,
+    oneOf: [
+      { type: 'string', description: 'Unique identifier of a tenant in your system' },
+      { $ref: getSchemaPath(TenantPayloadDto) },
+    ],
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => typeof value !== 'string')
+  @ValidateNested()
+  @Type(() => TenantPayloadDto)
+  tenant?: TriggerTenantContext;
 }

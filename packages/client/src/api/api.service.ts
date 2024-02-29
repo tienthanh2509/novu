@@ -11,6 +11,8 @@ import {
   IStoreQuery,
   IUserPreferenceSettings,
   IUnseenCountQuery,
+  IUnreadCountQuery,
+  IUserGlobalPreferenceSettings,
 } from '../index';
 
 export class ApiService {
@@ -50,30 +52,6 @@ export class ApiService {
     );
   }
 
-  /**
-   * @deprecated The method should not be used - Use markMessageAs instead.
-   */
-  async markMessageAsSeen(messageId: string | string[]): Promise<any> {
-    const messageIdString = messageId ? messageId.toString() : '';
-
-    return await this.httpClient.post(
-      `/widgets/messages/${messageIdString}/seen`,
-      {}
-    );
-  }
-
-  /**
-   * @deprecated The method should not be used - Use markMessageAs instead.
-   */
-  async markMessageAsRead(messageId: string | string[]): Promise<any> {
-    const messageIdString = messageId ? messageId.toString() : '';
-
-    return await this.httpClient.post(
-      `/widgets/messages/${messageIdString}/read`,
-      {}
-    );
-  }
-
   async markMessageAs(
     messageId: string | string[],
     mark: { seen?: boolean; read?: boolean }
@@ -93,15 +71,44 @@ export class ApiService {
     return await this.httpClient.delete(`/widgets/messages/${messageId}`, {});
   }
 
+  async removeMessages(messageIds: string[]): Promise<any> {
+    return await this.httpClient.post(`/widgets/messages/bulk/delete`, {
+      messageIds: messageIds,
+    });
+  }
+
+  async removeAllMessages(feedId?: string): Promise<any> {
+    const url = feedId
+      ? `/widgets/messages?feedId=${feedId}`
+      : `/widgets/messages`;
+
+    return await this.httpClient.delete(url);
+  }
+
+  async markAllMessagesAsRead(feedId?: string | string[]): Promise<any> {
+    return await this.httpClient.post(`/widgets/messages/read`, {
+      feedId,
+    });
+  }
+
+  async markAllMessagesAsSeen(feedId?: string | string[]): Promise<any> {
+    return await this.httpClient.post(`/widgets/messages/seen`, {
+      feedId,
+    });
+  }
+
   async getNotificationsList(
     page: number,
-    query: IStoreQuery = {}
+    { payload, ...rest }: IStoreQuery = {}
   ): Promise<IPaginatedResponse<IMessage>> {
+    const payloadString = payload ? btoa(JSON.stringify(payload)) : undefined;
+
     return await this.httpClient.getFullResponse(
       `/widgets/notifications/feed`,
       {
         page,
-        ...query,
+        payload: payloadString,
+        ...rest,
       }
     );
   }
@@ -135,6 +142,13 @@ export class ApiService {
     );
   }
 
+  async getUnreadCount(query: IUnreadCountQuery = {}) {
+    return await this.httpClient.get(
+      '/widgets/notifications/unread',
+      query as unknown as IParamObject
+    );
+  }
+
   async getTabCount(query: ITabCountQuery = {}) {
     return await this.httpClient.get(
       '/widgets/notifications/count',
@@ -150,6 +164,10 @@ export class ApiService {
     return this.httpClient.get('/widgets/preferences');
   }
 
+  async getUserGlobalPreference(): Promise<IUserGlobalPreferenceSettings[]> {
+    return this.httpClient.get('/widgets/preferences/global');
+  }
+
   async updateSubscriberPreference(
     templateId: string,
     channelType: string,
@@ -157,6 +175,19 @@ export class ApiService {
   ): Promise<IUserPreferenceSettings> {
     return await this.httpClient.patch(`/widgets/preferences/${templateId}`, {
       channel: { type: channelType, enabled },
+    });
+  }
+
+  async updateSubscriberGlobalPreference(
+    preferences: { channelType: string; enabled: boolean }[],
+    enabled?: boolean
+  ): Promise<IUserPreferenceSettings> {
+    return await this.httpClient.patch(`/widgets/preferences`, {
+      preferences: preferences.map((preference) => ({
+        ...preference,
+        type: preference.channelType,
+      })),
+      enabled,
     });
   }
 }

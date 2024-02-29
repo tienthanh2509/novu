@@ -1,60 +1,51 @@
 import { useEffect, useState } from 'react';
-import { IOrganizationEntity, ChannelTypeEnum } from '@novu/shared';
 import { Controller, useFormContext } from 'react-hook-form';
+import { IOrganizationEntity } from '@novu/shared';
+import { Tabs } from '@novu/design-system';
 
-import { Tabs } from '../../../../design-system';
-import { EmailMessageEditor } from './EmailMessageEditor';
-import { EmailCustomCodeEditor } from './EmailCustomCodeEditor';
-import { LackIntegrationError } from '../LackIntegrationError';
-import { useEnvController, useActiveIntegrations, useIntegrationLimit } from '../../../../hooks';
+import { useStepFormPath } from '../../hooks/useStepFormPath';
+import { useActiveIntegrations, useEnvController } from '../../../../hooks';
 import { EmailInboxContent } from './EmailInboxContent';
+import { EmailMessageEditor } from './EmailMessageEditor';
+import { CustomCodeEditor } from '../CustomCodeEditor';
 
 const EDITOR = 'Editor';
 const CUSTOM_CODE = 'Custom Code';
 
-export function EmailContentCard({
-  index,
-  organization,
-  isIntegrationActive,
-}: {
-  index: number;
-  organization: IOrganizationEntity | undefined;
-  isIntegrationActive: boolean;
-}) {
+export function EmailContentCard({ organization }: { organization: IOrganizationEntity | undefined }) {
   const { readonly } = useEnvController();
+  const stepFormPath = useStepFormPath();
   const { control, setValue, watch } = useFormContext(); // retrieve all hook methods
-  const contentType = watch(`steps.${index}.template.contentType`);
+  const contentType = watch(`${stepFormPath}.template.contentType`);
   const activeTab = contentType === 'customHtml' ? CUSTOM_CODE : EDITOR;
   const { integrations = [] } = useActiveIntegrations();
   const [integration, setIntegration]: any = useState(null);
-
-  const { enabled } = useIntegrationLimit(ChannelTypeEnum.EMAIL);
 
   useEffect(() => {
     if (integrations.length === 0) {
       return;
     }
-    setIntegration(integrations.find((item) => item.channel === 'email') || null);
+    setIntegration(integrations.find((item) => item.channel === 'email' && item.primary) || null);
   }, [integrations, setIntegration]);
 
   const onTabChange = (value: string | null) => {
-    setValue(`steps.${index}.template.contentType`, value === EDITOR ? 'editor' : 'customHtml');
+    setValue(`${stepFormPath}.template.contentType`, value === EDITOR ? 'editor' : 'customHtml');
   };
 
   const menuTabs = [
     {
       value: EDITOR,
-      content: <EmailMessageEditor branding={organization?.branding} readonly={readonly} stepIndex={index} />,
+      content: <EmailMessageEditor branding={organization?.branding} readonly={readonly} />,
     },
     {
       value: CUSTOM_CODE,
       content: (
         <Controller
-          name={`steps.${index}.template.htmlContent`}
+          name={`${stepFormPath}.template.htmlContent`}
           defaultValue=""
           control={control}
           render={({ field }) => {
-            return <EmailCustomCodeEditor onChange={field.onChange} value={field.value} />;
+            return <CustomCodeEditor onChange={field.onChange} value={field.value} />;
           }}
         />
       ),
@@ -63,20 +54,11 @@ export function EmailContentCard({
 
   return (
     <>
-      {!isIntegrationActive ? (
-        <LackIntegrationError
-          channelType="E-Mail"
-          text={
-            enabled
-              ? 'Looks like you haven’t configured your E-Mail provider yet, visit the integrations page to configure.'
-              : undefined
-          }
-        />
-      ) : null}
-      <EmailInboxContent integration={integration} index={index} readonly={readonly} />
-
-      <div data-test-id="editor-type-selector">
-        <Tabs value={activeTab} onTabChange={onTabChange} menuTabs={menuTabs} keepMounted={false} />
+      <EmailInboxContent integration={integration} readonly={readonly} />
+      <div data-test-id="email-step-settings-edit">
+        <div data-test-id="editor-type-selector">
+          <Tabs value={activeTab} onTabChange={onTabChange} menuTabs={menuTabs} keepMounted={false} />
+        </div>
       </div>
     </>
   );

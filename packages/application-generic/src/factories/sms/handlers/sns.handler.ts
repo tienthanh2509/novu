@@ -1,7 +1,6 @@
-import { ChannelTypeEnum } from '@novu/shared';
+import { ChannelTypeEnum, ICredentials } from '@novu/shared';
 import { SNSSmsProvider } from '@novu/sns';
 import { SNSConfig } from '@novu/sns/build/main/lib/sns.config';
-import { ICredentials } from '@novu/dal';
 import { BaseSmsHandler } from './base.handler';
 
 export class SnsHandler extends BaseSmsHandler {
@@ -9,12 +8,10 @@ export class SnsHandler extends BaseSmsHandler {
     super('sns', ChannelTypeEnum.SMS);
   }
   buildProvider(credentials: ICredentials) {
-    const config: SNSConfig = {
+    this.provider = new SNSSmsProvider({
       accessKeyId: credentials.apiKey,
       secretAccessKey: credentials.secretKey,
       region: credentials.region,
-    };
-
-    this.provider = new SNSSmsProvider(config);
+    });
   }
 }

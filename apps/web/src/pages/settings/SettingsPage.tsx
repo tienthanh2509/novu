@@ -1,51 +1,79 @@
-import { Container } from '@mantine/core';
-
-import PageMeta from '../../components/layout/components/PageMeta';
+import { Center, Container, Loader, Tabs } from '@mantine/core';
 import PageHeader from '../../components/layout/components/PageHeader';
 import PageContainer from '../../components/layout/components/PageContainer';
-import { Tabs } from '../../design-system';
-import { ApiKeysCard, InAppCenterCard } from './tabs';
+import { ApiKeysCard } from './tabs';
+import { Outlet } from 'react-router-dom';
+import { useMemo } from 'react';
+import { FeatureFlagsKeysEnum } from '@novu/shared';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { ROUTES } from '../../constants/routes.enum';
 import { useAuthContext } from '../../components/providers/AuthProvider';
-import { EmailSettings } from './tabs/EmailSettings';
+import { When, colors, useTabsStyles } from '@novu/design-system';
+import { useFeatureFlag } from '../../hooks';
 
-enum MenuTitleEnum {
-  IN_APP_CENTER = 'In App Center',
-  API_KEYS = 'API Keys',
-  EMAIL_SETTINGS = 'Email Settings',
-}
+const SettingsPageWrapper = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <PageContainer title="Settings">
+      <PageHeader title="Settings" />
+      <Container fluid mt={15} ml={5}>
+        {children}
+      </Container>
+    </PageContainer>
+  );
+};
 
 export function SettingsPage() {
   const { currentOrganization } = useAuthContext();
   const selfHosted = process.env.REACT_APP_DOCKER_HOSTED_ENV === 'true';
+  const { classes } = useTabsStyles(false);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const billingEnabled = useFeatureFlag(FeatureFlagsKeysEnum.IS_BILLING_ENABLED);
+  const value = useMemo(() => {
+    return pathname === ROUTES.SETTINGS ? '/' : pathname.replace(ROUTES.SETTINGS, '');
+  }, [pathname]);
 
-  let menuTabs = [
-    {
-      value: MenuTitleEnum.IN_APP_CENTER,
-      content: <InAppCenterCard />,
-    },
-    {
-      value: MenuTitleEnum.API_KEYS,
-      content: <ApiKeysCard />,
-    },
-  ];
+  if (!currentOrganization) {
+    return (
+      <Center>
+        <Loader color={colors.error} size={32} />
+      </Center>
+    );
+  }
 
-  if (!selfHosted) {
-    menuTabs = [
-      ...menuTabs,
-      {
-        value: MenuTitleEnum.EMAIL_SETTINGS,
-        content: <EmailSettings />,
-      },
-    ];
+  if (selfHosted) {
+    return (
+      <SettingsPageWrapper>
+        <ApiKeysCard />
+      </SettingsPageWrapper>
+    );
   }
 
   return (
-    <PageContainer>
-      <PageMeta title="Settings" />
-      <PageHeader title="Settings" />
-      <Container fluid mt={15} ml={5}>
-        <Tabs loading={!currentOrganization} menuTabs={menuTabs} defaultValue={MenuTitleEnum.IN_APP_CENTER} />
-      </Container>
-    </PageContainer>
+    <SettingsPageWrapper>
+      <Tabs
+        orientation="horizontal"
+        keepMounted={true}
+        onTabChange={(tabValue) => {
+          navigate(ROUTES.SETTINGS + tabValue);
+        }}
+        variant="default"
+        value={value}
+        classNames={classes}
+        mb={15}
+      >
+        <Tabs.List>
+          <Tabs.Tab value="/">API Keys</Tabs.Tab>
+          <Tabs.Tab value="/email">Email Settings</Tabs.Tab>
+          <When truthy={billingEnabled}>
+            <Tabs.Tab value="/billing">Billing Plans</Tabs.Tab>
+          </When>
+          <Tabs.Tab value="/permissions">Permissions</Tabs.Tab>
+          <Tabs.Tab value="/sso">SSO</Tabs.Tab>
+          <Tabs.Tab value="/data-integrations">Data Integrations</Tabs.Tab>
+        </Tabs.List>
+      </Tabs>
+      <Outlet />
+    </SettingsPageWrapper>
   );
 }

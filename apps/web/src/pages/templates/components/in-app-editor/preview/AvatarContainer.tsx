@@ -11,9 +11,9 @@ import {
 import { useController } from 'react-hook-form';
 import { SystemAvatarIconEnum, IActor, ActorTypeEnum } from '@novu/shared';
 
-import { colors, Input, Switch, Text, Tooltip } from '../../../../../design-system';
-import { Avatar, Camera } from '../../../../../design-system/icons';
+import { colors, Input, Switch, Text, Tooltip, Avatar, Camera } from '@novu/design-system';
 import { AvatarWrapper, IconWrapper, useStyles } from './AvatarContainer.styles';
+import { useStepFormPath } from '../../../hooks/useStepFormPath';
 
 const MENU_CLICK_OUTSIDE_EVENTS = ['click', 'mousedown', 'touchstart'];
 
@@ -57,20 +57,19 @@ const systemIcons = [
 ];
 
 const AvatarContainer = ({
-  index,
   opened,
   setOpened,
   readonly,
 }: {
-  index: number;
   opened: boolean;
   setOpened: Dispatch<SetStateAction<boolean>>;
   readonly: boolean;
 }) => {
+  const path = useStepFormPath();
   const {
     field: { value, onChange },
   } = useController({
-    name: `steps.${index}.template.actor` as any,
+    name: `${path}.template.actor` as any,
   });
 
   const [tooltipOpened, setTooltipOpened] = useState(() => {
@@ -106,7 +105,12 @@ const AvatarContainer = ({
         <Popover.Target>
           <span>
             <Tooltip disabled={readonly} label={<TooltipLabel />} position="left" opened={tooltipOpened}>
-              <AvatarWrapper onClick={handleAvatarPopover} dark={dark} readonly={readonly}>
+              <AvatarWrapper
+                data-test-id="choose-avatar-btn"
+                onClick={handleAvatarPopover}
+                dark={dark}
+                readonly={readonly}
+              >
                 <RenderAvatar actor={value} />
               </AvatarWrapper>
             </Tooltip>
@@ -164,6 +168,7 @@ const AvatarContainer = ({
             <Group position="center" spacing={20}>
               {systemIcons.map((icon) => (
                 <IconWrapper
+                  data-test-id={`avatar-icon-${icon.type}`}
                   iconColor={icon.iconColor}
                   containerBgColor={icon.containerBgColor}
                   onClick={() =>
@@ -203,7 +208,12 @@ function RenderAvatar({ actor }: { actor: IActor }) {
     const selectedIcon = systemIcons.filter((data) => data.type === actor.data);
 
     return selectedIcon.length > 0 ? (
-      <IconWrapper size={40} iconColor={selectedIcon[0].iconColor} containerBgColor={selectedIcon[0].containerBgColor}>
+      <IconWrapper
+        data-test-id={`avatar-icon-${selectedIcon[0].type}`}
+        size={40}
+        iconColor={selectedIcon[0].iconColor}
+        containerBgColor={selectedIcon[0].containerBgColor}
+      >
         {selectedIcon[0].icon}
       </IconWrapper>
     ) : (

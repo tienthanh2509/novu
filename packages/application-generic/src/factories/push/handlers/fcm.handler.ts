@@ -1,7 +1,6 @@
-import { ChannelTypeEnum } from '@novu/shared';
+import { ChannelTypeEnum, ICredentials } from '@novu/shared';
 import { FcmPushProvider } from '@novu/fcm';
 import { BasePushHandler } from './base.handler';
-import { ICredentials } from '@novu/dal';
 
 export class FCMHandler extends BasePushHandler {
   constructor() {
@@ -14,12 +13,13 @@ export class FCMHandler extends BasePushHandler {
       serviceAccount: credentials.serviceAccount,
     };
 
-    if (!credentials.user && !credentials.serviceAccount) {
-      throw Error('Config is not valid for fcm');
-    }
     const updatedCredentials = credentialConfig.serviceAccount
       ? credentialConfig.serviceAccount
       : credentialConfig.user;
+
+    if (!updatedCredentials) {
+      throw new Error('Config is not valid for fcm');
+    }
 
     const config = JSON.parse(updatedCredentials);
     this.provider = new FcmPushProvider({

@@ -6,17 +6,17 @@ import {
   SubscriberEntity,
   SubscriberRepository,
   MemberRepository,
+  PreferenceLevelEnum,
 } from '@novu/dal';
-import { AnalyticsService } from '@novu/application-generic';
+import {
+  AnalyticsService,
+  GetSubscriberTemplatePreference,
+  GetSubscriberTemplatePreferenceCommand,
+} from '@novu/application-generic';
+import { ISubscriberPreferenceResponse } from '@novu/shared';
 
 import { UpdateSubscriberPreferenceCommand } from './update-subscriber-preference.command';
 import { ApiException } from '../../../shared/exceptions/api.exception';
-import { ISubscriberPreferenceResponse } from '../get-subscriber-preference/get-subscriber-preference.usecase';
-import {
-  GetSubscriberTemplatePreference,
-  GetSubscriberTemplatePreferenceCommand,
-} from '../get-subscriber-template-preference';
-import { ANALYTICS_SERVICE } from '../../../shared/shared.module';
 
 @Injectable()
 export class UpdateSubscriberPreference {
@@ -24,7 +24,7 @@ export class UpdateSubscriberPreference {
     private subscriberPreferenceRepository: SubscriberPreferenceRepository,
     private getSubscriberTemplatePreference: GetSubscriberTemplatePreference,
     private notificationTemplateRepository: NotificationTemplateRepository,
-    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService,
+    private analyticsService: AnalyticsService,
     private subscriberRepository: SubscriberRepository,
     private memberRepository: MemberRepository
   ) {}
@@ -92,6 +92,7 @@ export class UpdateSubscriberPreference {
        */
       enabled: command.enabled !== false,
       channels: command.channel?.type ? channelObj : null,
+      level: PreferenceLevelEnum.TEMPLATE,
     });
   }
 

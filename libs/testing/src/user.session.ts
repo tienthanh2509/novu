@@ -4,56 +4,37 @@ import { SuperTest, Test } from 'supertest';
 import * as request from 'supertest';
 import * as defaults from 'superagent-defaults';
 import { v4 as uuid } from 'uuid';
-import { Queue } from 'bullmq';
-import { Novu, TriggerRecipientsPayload } from '@novu/node';
-import { EmailBlockTypeEnum, IEmailBlock, StepTypeEnum } from '@novu/shared';
+import {
+  ApiServiceLevelEnum,
+  EmailBlockTypeEnum,
+  IApiRateLimitMaximum,
+  IEmailBlock,
+  JobTopicNameEnum,
+  StepTypeEnum,
+  TriggerRecipientsPayload,
+} from '@novu/shared';
 import {
   UserEntity,
   EnvironmentEntity,
   OrganizationEntity,
   NotificationGroupEntity,
-  EnvironmentRepository,
   NotificationGroupRepository,
-  JobRepository,
-  JobStatusEnum,
   FeedRepository,
   ChangeRepository,
   ChangeEntity,
   SubscriberRepository,
   LayoutRepository,
+  IntegrationRepository,
 } from '@novu/dal';
-import { ConnectionOptions } from 'tls';
 
 import { NotificationTemplateService } from './notification-template.service';
 import { TestServer, testServer } from './test-server.service';
-
 import { OrganizationService } from './organization.service';
 import { EnvironmentService } from './environment.service';
 import { CreateTemplatePayload } from './create-notification-template.interface';
 import { IntegrationService } from './integration.service';
 import { UserService } from './user.service';
-
-/**
- * TODO: move this to a reusable area
- */
-const queue = new Queue('trigger-handler', {
-  connection: {
-    db: Number(process.env.REDIS_DB_INDEX || '1'),
-    port: Number(process.env.REDIS_PORT || 6379),
-    host: process.env.REDIS_HOST,
-    password: process.env.REDIS_PASSWORD,
-    connectTimeout: 50000,
-    keepAlive: 30000,
-    tls: process.env.REDIS_TLS as ConnectionOptions,
-  },
-  defaultJobOptions: {
-    removeOnComplete: true,
-  },
-});
-
-if (process.env.NODE_ENV === 'test') {
-  queue.obliterate({ force: true });
-}
+import { JobsService } from './jobs.service';
 
 const EMAIL_BLOCK: IEmailBlock[] = [
   {
@@ -63,12 +44,14 @@ const EMAIL_BLOCK: IEmailBlock[] = [
 ];
 
 export class UserSession {
-  private environmentRepository = new EnvironmentRepository();
   private notificationGroupRepository = new NotificationGroupRepository();
-  private jobRepository = new JobRepository();
   private feedRepository = new FeedRepository();
   private layoutRepository = new LayoutRepository();
+  private integrationRepository = new IntegrationRepository();
   private changeRepository: ChangeRepository = new ChangeRepository();
+  private environmentService: EnvironmentService = new EnvironmentService();
+  private integrationService: IntegrationService = new IntegrationService();
+  private jobsService: JobsService;
 
   token: string;
 
@@ -94,11 +77,17 @@ export class UserSession {
 
   apiKey: string;
 
-  serverSdk: Novu;
+  constructor(public serverUrl = `http://127.0.0.1:${process.env.PORT}`) {
+    this.jobsService = new JobsService();
+  }
 
-  constructor(public serverUrl = `http://localhost:${process.env.PORT}`) {}
-
-  async initialize(options: { noOrganization?: boolean; noEnvironment?: boolean; noIntegrations?: boolean } = {}) {
+  async initialize(
+    options: {
+      noOrganization?: boolean;
+      noEnvironment?: boolean;
+      showOnBoardingTour?: boolean;
+    } = {}
+  ) {
     const card = {
       firstName: faker.name.firstName(),
       lastName: faker.name.lastName(),
@@ -113,6 +102,7 @@ export class UserSession {
       tokens: [],
       password: '123Qwe!@#',
       showOnBoarding: true,
+      showOnBoardingTour: options.showOnBoardingTour ? 0 : 2,
     };
 
     this.user = await userService.createUser(userEntity);
@@ -123,19 +113,8 @@ export class UserSession {
 
     await this.fetchJWT();
 
-    if (!options.noOrganization) {
-      if (!options?.noEnvironment) {
-        const environment = await this.createEnvironment('Development');
-        await this.createEnvironment('Production', this.environment._id);
-        this.environment = environment;
-        this.apiKey = this.environment.apiKeys[0].key;
-
-        if (!options?.noIntegrations) {
-          await this.createIntegration();
-        }
-        await this.createFeed();
-        await this.createFeed('New');
-      }
+    if (!options.noOrganization && !options?.noEnvironment) {
+      await this.createEnvironmentsAndFeeds();
     }
 
     await this.fetchJWT();
@@ -151,10 +130,6 @@ export class UserSession {
       this.subscriberToken = token;
       this.subscriberProfile = profile;
     }
-
-    this.serverSdk = new Novu(this.apiKey, {
-      backendUrl: this.serverUrl,
-    });
   }
 
   private async initializeWidgetSession() {
@@ -195,19 +170,25 @@ export class UserSession {
     this.testAgent = defaults(request(this.requestEndpoint)).set('Authorization', this.token);
   }
 
-  async createEnvironment(name = 'Test environment', parentId: string | undefined = undefined) {
-    this.environment = await this.environmentRepository.create({
+  async createEnvironmentsAndFeeds(): Promise<void> {
+    const development = await this.createEnvironment('Development');
+    this.environment = development;
+    const production = await this.createEnvironment('Production', development._id);
+    this.apiKey = this.environment.apiKeys[0].key;
+
+    await this.createIntegrations([development, production]);
+
+    await this.createFeed();
+    await this.createFeed('New');
+  }
+
+  async createEnvironment(name = 'Test environment', parentId?: string): Promise<EnvironmentEntity> {
+    const environment = await this.environmentService.createEnvironment(
+      this.organization._id,
+      this.user._id,
       name,
-      identifier: uuid(),
-      _parentId: parentId,
-      _organizationId: this.organization._id,
-      apiKeys: [
-        {
-          key: uuid(),
-          _userId: this.user._id,
-        },
-      ],
-    });
+      parentId
+    );
 
     let parentGroup;
     if (parentId) {
@@ -219,19 +200,20 @@ export class UserSession {
 
     await this.notificationGroupRepository.create({
       name: 'General',
-      _environmentId: this.environment._id,
+      _environmentId: environment._id,
       _organizationId: this.organization._id,
       _parentId: parentGroup?._id,
     });
 
     await this.layoutRepository.create({
       name: 'Default',
-      _environmentId: this.environment._id,
+      identifier: 'default-layout',
+      _environmentId: environment._id,
       _organizationId: this.organization._id,
       isDefault: true,
     });
 
-    return this.environment;
+    return environment;
   }
 
   async updateOrganizationDetails() {
@@ -251,24 +233,16 @@ export class UserSession {
     this.notificationGroups = groupsResponse.body.data;
   }
 
-  async addEnvironment() {
-    const environmentService = new EnvironmentService();
-
-    this.environment = await environmentService.createEnvironment(this.organization._id);
-
-    return this.environment;
-  }
-
   async createTemplate(template?: Partial<CreateTemplatePayload>) {
     const service = new NotificationTemplateService(this.user._id, this.organization._id, this.environment._id);
 
     return await service.createTemplate(template);
   }
 
-  async createIntegration() {
-    const service = new IntegrationService();
-
-    return await service.createIntegration(this.environment._id, this.organization._id);
+  async createIntegrations(environments: EnvironmentEntity[]): Promise<void> {
+    for (const environment of environments) {
+      await this.integrationService.createChannelIntegrations(environment._id, this.organization._id);
+    }
   }
 
   async createChannelTemplate(channel: StepTypeEnum) {
@@ -293,10 +267,22 @@ export class UserSession {
     return this.organization;
   }
 
-  async switchEnvironment(environmentId: string) {
-    const environmentService = new EnvironmentService();
+  async switchToProdEnvironment() {
+    const prodEnvironment = await this.environmentService.getProductionEnvironment(this.organization._id);
+    if (prodEnvironment) {
+      await this.switchEnvironment(prodEnvironment._id);
+    }
+  }
 
-    const environment = await environmentService.getEnvironment(environmentId);
+  async switchToDevEnvironment() {
+    const devEnvironment = await this.environmentService.getDevelopmentEnvironment(this.organization._id);
+    if (devEnvironment) {
+      await this.switchEnvironment(devEnvironment._id);
+    }
+  }
+
+  async switchEnvironment(environmentId: string) {
+    const environment = await this.environmentService.getEnvironment(environmentId);
 
     if (environment) {
       this.environment = environment;
@@ -319,40 +305,29 @@ export class UserSession {
   }
 
   async triggerEvent(triggerName: string, to: TriggerRecipientsPayload, payload = {}) {
-    await this.testAgent.post('/v1/events/trigger').send({
+    return await this.testAgent.post('/v1/events/trigger').send({
       name: triggerName,
       to: to,
       payload,
     });
   }
 
-  public async awaitParsingEvents() {
-    let waitingCount = 0;
-    let parsedEvents = 0;
-    do {
-      waitingCount = await queue.getWaitingCount();
-      parsedEvents = await queue.getActiveCount();
-    } while (parsedEvents > 0 || waitingCount > 0);
+  public async awaitRunningJobs(
+    templateId?: string | string[],
+    delay?: boolean,
+    unfinishedJobs = 0,
+    organizationId = this.organization._id
+  ) {
+    return await this.jobsService.awaitRunningJobs({
+      templateId,
+      organizationId,
+      delay,
+      unfinishedJobs,
+    });
   }
 
-  public async awaitRunningJobs(templateId?: string | string[], delay?: boolean, unfinishedJobs = 0) {
-    let runningJobs = 0;
-    let waitingCount = 0;
-    let parsedEvents = 0;
-    do {
-      waitingCount = await queue.getWaitingCount();
-      parsedEvents = await queue.getActiveCount();
-      runningJobs = await this.jobRepository.count({
-        _organizationId: this.organization._id,
-        type: {
-          $nin: [delay ? StepTypeEnum.DELAY : StepTypeEnum.DIGEST],
-        },
-        _templateId: Array.isArray(templateId) ? { $in: templateId } : templateId,
-        status: {
-          $in: [JobStatusEnum.PENDING, JobStatusEnum.QUEUED, JobStatusEnum.RUNNING],
-        },
-      });
-    } while (parsedEvents > 0 || waitingCount > 0 || runningJobs > unfinishedJobs);
+  public async queueGet(jobTopicName: JobTopicNameEnum, getter: 'getDelayed') {
+    return await this.jobsService.queueGet(jobTopicName, getter);
   }
 
   public async applyChanges(where: Partial<ChangeEntity> = {}) {
@@ -372,5 +347,15 @@ export class UserSession {
     for (const change of changes) {
       await this.testAgent.post(`/v1/changes/${change._id}/apply`);
     }
+  }
+
+  public async updateOrganizationServiceLevel(serviceLevel: ApiServiceLevelEnum) {
+    const organizationService = new OrganizationService();
+
+    await organizationService.updateServiceLevel(this.organization._id, serviceLevel);
+  }
+
+  public async updateEnvironmentApiRateLimits(apiRateLimits: Partial<IApiRateLimitMaximum>) {
+    await this.environmentService.updateApiRateLimits(this.environment._id, apiRateLimits);
   }
 }

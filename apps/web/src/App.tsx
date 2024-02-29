@@ -2,7 +2,12 @@ import * as Sentry from '@sentry/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HelmetProvider } from 'react-helmet-async';
 import { Route, Routes, BrowserRouter } from 'react-router-dom';
+import { withLDProvider } from 'launchdarkly-react-client-sdk';
 import { Integrations } from '@sentry/tracing';
+import { library } from '@fortawesome/fontawesome-svg-core';
+import { far } from '@fortawesome/free-regular-svg-icons';
+import { fas } from '@fortawesome/free-solid-svg-icons';
+
 import { AuthProvider } from './components/providers/AuthProvider';
 import { applyToken, getToken } from './hooks';
 import { ActivitiesPage } from './pages/activities/ActivitiesPage';
@@ -10,7 +15,7 @@ import LoginPage from './pages/auth/LoginPage';
 import SignUpPage from './pages/auth/SignUpPage';
 import HomePage from './pages/HomePage';
 import TemplateEditorPage from './pages/templates/editor/TemplateEditorPage';
-import NotificationList from './pages/templates/TemplatesListPage';
+import WorkflowListPage from './pages/templates/WorkflowListPage';
 import SubscribersList from './pages/subscribers/SubscribersListPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import InvitationPage from './pages/auth/InvitationPage';
@@ -18,53 +23,46 @@ import { api } from './api/api.client';
 import { PasswordResetPage } from './pages/auth/PasswordResetPage';
 import { AppLayout } from './components/layout/AppLayout';
 import { MembersInvitePage } from './pages/invites/MembersInvitePage';
-import { IntegrationsStore } from './pages/integrations/IntegrationsStorePage';
-import CreateOrganizationPage from './pages/auth/CreateOrganizationPage';
-import { ENV, SENTRY_DSN, CONTEXT_PATH, LOGROCKET_ID } from './config';
+import QuestionnairePage from './pages/auth/QuestionnairePage';
+import { ENV, LAUNCH_DARKLY_CLIENT_SIDE_ID, SENTRY_DSN, CONTEXT_PATH } from './config';
 import { PromoteChangesPage } from './pages/changes/PromoteChangesPage';
 import { LinkVercelProjectPage } from './pages/partner-integrations/LinkVercelProjectPage';
 import { ROUTES } from './constants/routes.enum';
 import { BrandPage } from './pages/brand/BrandPage';
 import { SegmentProvider } from './components/providers/SegmentProvider';
-import LogRocket from 'logrocket';
-import setupLogRocketReact from 'logrocket-react';
-import packageJson from '../package.json';
-import { GeneralStarter } from './pages/quick-start/steps/GeneralStarter';
-import { QuickStartWrapper } from './pages/quick-start/components/QuickStartWrapper';
-import { Quickstart } from './pages/quick-start/steps/Quickstart';
 import { NotificationCenter } from './pages/quick-start/steps/NotificationCenter';
 import { FrameworkSetup } from './pages/quick-start/steps/FrameworkSetup';
 import { Setup } from './pages/quick-start/steps/Setup';
-import { Trigger } from './pages/quick-start/steps/Trigger';
 import { RequiredAuth } from './components/layout/RequiredAuth';
-import { TemplateFormProvider } from './pages/templates/components/TemplateFormProvider';
-import { TemplateEditorProvider } from './pages/templates/components/TemplateEditorProvider';
+import { GetStarted } from './pages/quick-start/steps/GetStarted';
+import { DigestPreview } from './pages/quick-start/steps/DigestPreview';
+import { TemplatesDigestPlaygroundPage } from './pages/templates/TemplatesDigestPlaygroundPage';
+import { Sidebar } from './pages/templates/workflow/SideBar/Sidebar';
+import { TemplateSettings } from './pages/templates/components/TemplateSettings';
+import { UserPreference } from './pages/templates/components/UserPreference';
+import { TestWorkflowPage } from './pages/templates/components/TestWorkflowPage';
+import { SnippetPage } from './pages/templates/components/SnippetPage';
+import { ChannelStepEditor } from './pages/templates/components/ChannelStepEditor';
+import { ProvidersPage } from './pages/templates/components/ProvidersPage';
+import { InAppSuccess } from './pages/quick-start/steps/InAppSuccess';
+import { IntegrationsListPage } from './pages/integrations/IntegrationsListPage';
+import { CreateProviderPage } from './pages/integrations/CreateProviderPage';
+import { UpdateProviderPage } from './pages/integrations/UpdateProviderPage';
+import { SelectProviderPage } from './pages/integrations/components/SelectProviderPage';
+import { TenantsPage } from './pages/tenants/TenantsPage';
+import { CreateTenantPage } from './pages/tenants/CreateTenantPage';
+import { UpdateTenantPage } from './pages/tenants/UpdateTenantPage';
+import { ApiKeysCard } from './pages/settings/tabs';
+import { EmailSettings } from './pages/settings/tabs/EmailSettings';
+import { ProductLead } from './components/utils/ProductLead';
+import { SSO, UserAccess, Cloud } from '@novu/design-system';
+import { BrandingForm, LayoutsListPage } from './pages/brand/tabs';
+import { TranslationRoutes } from './pages/TranslationPages';
+import { VariantsPage } from './pages/templates/components/VariantsPage';
+import { ChannelPreview } from './pages/templates/components/ChannelPreview';
+import { BillingRoutes } from './pages/BillingPages';
 
-if (LOGROCKET_ID && window !== undefined) {
-  LogRocket.init(LOGROCKET_ID, {
-    release: packageJson.version,
-    rootHostname: 'novu.co',
-    console: {
-      shouldAggregateConsoleErrors: true,
-    },
-    network: {
-      requestSanitizer: (request) => {
-        // if the url contains token 'ignore' it
-        if (request.url.toLowerCase().indexOf('token') !== -1) {
-          // ignore the request response pair
-          return null;
-        }
-
-        // remove Authorization header from logrocket
-        request.headers.Authorization = undefined;
-
-        // otherwise log the request normally
-        return request;
-      },
-    },
-  });
-  setupLogRocketReact(LogRocket);
-}
+library.add(far, fas);
 
 if (SENTRY_DSN) {
   Sentry.init({
@@ -98,28 +96,8 @@ if (SENTRY_DSN) {
      */
     tracesSampleRate: 1.0,
     beforeSend(event: Sentry.Event) {
-      const logRocketSession = LogRocket.sessionURL;
-
-      if (logRocketSession !== null || (event as string) !== '' || event !== undefined) {
-        /*
-         * Must ignore the next line as this variable could be null but
-         * can not be null because of the check in the if statement above.
-         */
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        event.extra.LogRocket = logRocketSession;
-
-        return event;
-      } else {
-        return event;
-      } //else
+      return event;
     },
-  });
-
-  LogRocket.getSessionURL((sessionURL) => {
-    Sentry.configureScope((scope) => {
-      scope.setExtra('sessionURL', sessionURL);
-    });
   });
 }
 
@@ -154,7 +132,7 @@ function App() {
                 <Route path={ROUTES.AUTH_RESET_REQUEST} element={<PasswordResetPage />} />
                 <Route path={ROUTES.AUTH_RESET_TOKEN} element={<PasswordResetPage />} />
                 <Route path={ROUTES.AUTH_INVITATION_TOKEN} element={<InvitationPage />} />
-                <Route path={ROUTES.AUTH_APPLICATION} element={<CreateOrganizationPage />} />
+                <Route path={ROUTES.AUTH_APPLICATION} element={<QuestionnairePage />} />
                 <Route
                   path={ROUTES.PARTNER_INTEGRATIONS_VERCEL_LINK_PROJECTS}
                   element={
@@ -173,47 +151,87 @@ function App() {
                 />
                 <Route element={<AppLayout />}>
                   <Route path={ROUTES.ANY} element={<HomePage />} />
-                  <Route
-                    path={ROUTES.TEMPLATES_CREATE}
-                    element={
-                      <TemplateFormProvider>
-                        <TemplateEditorProvider>
-                          <TemplateEditorPage />
-                        </TemplateEditorProvider>
-                      </TemplateFormProvider>
-                    }
-                  />
-                  <Route
-                    path={ROUTES.TEMPLATES_EDIT_TEMPLATEID}
-                    element={
-                      <TemplateFormProvider>
-                        <TemplateEditorProvider>
-                          <TemplateEditorPage />
-                        </TemplateEditorProvider>
-                      </TemplateFormProvider>
-                    }
-                  />
-                  <Route path={ROUTES.TEMPLATES} element={<NotificationList />} />
-                  <Route
-                    path="/general-started"
-                    element={
-                      <QuickStartWrapper>
-                        <GeneralStarter />
-                      </QuickStartWrapper>
-                    }
-                  />
-                  <Route path={ROUTES.QUICKSTART} element={<Quickstart />} />
-                  <Route path="/quickstart/notification-center" element={<NotificationCenter />} />
-                  <Route path="/quickstart/notification-center/set-up" element={<FrameworkSetup />} />
-                  <Route path="/quickstart/notification-center/set-up/:framework" element={<Setup />} />
-                  <Route path="/quickstart/notification-center/trigger" element={<Trigger />} />
+                  <Route path={ROUTES.WORKFLOWS_DIGEST_PLAYGROUND} element={<TemplatesDigestPlaygroundPage />} />
+                  <Route path={ROUTES.WORKFLOWS_CREATE} element={<TemplateEditorPage />} />
+                  <Route path={ROUTES.WORKFLOWS_EDIT_TEMPLATEID} element={<TemplateEditorPage />}>
+                    <Route path="" element={<Sidebar />} />
+                    <Route path="settings" element={<TemplateSettings />} />
+                    <Route path="channels" element={<UserPreference />} />
+                    <Route path="test-workflow" element={<TestWorkflowPage />} />
+                    <Route path="snippet" element={<SnippetPage />} />
+                    <Route path="providers" element={<ProvidersPage />} />
+                    <Route path=":channel/:stepUuid" element={<ChannelStepEditor />} />
+                    <Route path=":channel/:stepUuid/preview" element={<ChannelPreview />} />
+                    <Route path=":channel/:stepUuid/variants/:variantUuid/preview" element={<VariantsPage />} />
+                    <Route path=":channel/:stepUuid/variants/:variantUuid" element={<ChannelStepEditor />} />
+                    <Route path=":channel/:stepUuid/variants/create" element={<VariantsPage />} />
+                  </Route>
+                  <Route path={ROUTES.WORKFLOWS} element={<WorkflowListPage />} />
+                  <Route path={ROUTES.TENANTS} element={<TenantsPage />}>
+                    <Route path="create" element={<CreateTenantPage />} />
+                    <Route path=":identifier" element={<UpdateTenantPage />} />
+                  </Route>
+                  <Route path={ROUTES.GET_STARTED} element={<GetStarted />} />
+                  <Route path={ROUTES.GET_STARTED_PREVIEW} element={<DigestPreview />} />
+                  <Route path={ROUTES.QUICK_START_NOTIFICATION_CENTER} element={<NotificationCenter />} />
+                  <Route path={ROUTES.QUICK_START_SETUP} element={<FrameworkSetup />} />
+                  <Route path={ROUTES.QUICK_START_SETUP_FRAMEWORK} element={<Setup />} />
+                  <Route path={ROUTES.QUICK_START_SETUP_SUCCESS} element={<InAppSuccess />} />
                   <Route path={ROUTES.ACTIVITIES} element={<ActivitiesPage />} />
-                  <Route path={ROUTES.SETTINGS} element={<SettingsPage />} />
-                  <Route path={ROUTES.INTEGRATIONS} element={<IntegrationsStore />} />
+                  <Route path={ROUTES.SETTINGS} element={<SettingsPage />}>
+                    <Route path="" element={<ApiKeysCard />} />
+                    <Route path="billing/*" element={<BillingRoutes />} />
+                    <Route path="email" element={<EmailSettings />} />
+                    <Route
+                      path="permissions"
+                      element={
+                        <ProductLead
+                          icon={<UserAccess />}
+                          id="rbac-permissions"
+                          title="Role-based access control"
+                          text="Securely manage users' permissions to access system resources."
+                          closeable={false}
+                        />
+                      }
+                    />
+                    <Route
+                      path="sso"
+                      element={
+                        <ProductLead
+                          icon={<SSO />}
+                          id="sso-settings"
+                          title="Single Sign-On (SSO)"
+                          text="Simplify user authentication and enhance security."
+                          closeable={false}
+                        />
+                      }
+                    />
+                    <Route
+                      path="data-integrations"
+                      element={
+                        <ProductLead
+                          icon={<Cloud />}
+                          id="data-integrations-settings"
+                          title="Data Integrations"
+                          text="Share data with 3rd party services via Segment and Datadog integrations to monitor analytics."
+                          closeable={false}
+                        />
+                      }
+                    />
+                  </Route>
+                  <Route path={ROUTES.INTEGRATIONS} element={<IntegrationsListPage />}>
+                    <Route path="create" element={<SelectProviderPage />} />
+                    <Route path="create/:channel/:providerId" element={<CreateProviderPage />} />
+                    <Route path=":integrationId" element={<UpdateProviderPage />} />
+                  </Route>
                   <Route path={ROUTES.TEAM} element={<MembersInvitePage />} />
                   <Route path={ROUTES.CHANGES} element={<PromoteChangesPage />} />
                   <Route path={ROUTES.SUBSCRIBERS} element={<SubscribersList />} />
-                  <Route path="/brand" element={<BrandPage />} />
+                  <Route path={ROUTES.BRAND} element={<BrandPage />}>
+                    <Route path="" element={<BrandingForm />} />
+                    <Route path="layouts" element={<LayoutsListPage />} />
+                  </Route>
+                  <Route path="/translations/*" element={<TranslationRoutes />} />
                 </Route>
               </Routes>
             </AuthProvider>
@@ -224,4 +242,11 @@ function App() {
   );
 }
 
-export default Sentry.withProfiler(App);
+export default Sentry.withProfiler(
+  withLDProvider({
+    clientSideID: LAUNCH_DARKLY_CLIENT_SIDE_ID,
+    reactOptions: {
+      useCamelCaseFlagKeys: false,
+    },
+  })(App)
+);

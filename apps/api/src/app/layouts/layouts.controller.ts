@@ -6,25 +6,25 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Inject,
   Param,
   Patch,
   Post,
   Query,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
+  ApiCommonResponses,
+  ApiResponse,
   ApiBadRequestResponse,
   ApiConflictResponse,
-  ApiCreatedResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
-  ApiOperation,
-  ApiQuery,
-  ApiTags,
-} from '@nestjs/swagger';
+} from '../shared/framework/response.decorator';
 import { IJwtPayload } from '@novu/shared';
+import { GetLayoutCommand, GetLayoutUseCase, OtelSpan } from '@novu/application-generic';
 
 import {
   CreateLayoutRequestDto,
@@ -42,8 +42,6 @@ import {
   DeleteLayoutUseCase,
   FilterLayoutsCommand,
   FilterLayoutsUseCase,
-  GetLayoutCommand,
-  GetLayoutUseCase,
   SetDefaultLayoutCommand,
   SetDefaultLayoutUseCase,
   UpdateLayoutCommand,
@@ -51,15 +49,14 @@ import {
 } from './usecases';
 import { LayoutId } from './types';
 
-import { JwtAuthGuard } from '../auth/framework/auth.guard';
+import { UserAuthGuard } from '../auth/framework/user.auth.guard';
 import { ExternalApiAccessible } from '../auth/framework/external-api.decorator';
 import { UserSession } from '../shared/framework/user.decorator';
-import { AnalyticsService } from '@novu/application-generic';
-import { ANALYTICS_SERVICE } from '../shared/shared.module';
 
+@ApiCommonResponses()
 @Controller('/layouts')
 @ApiTags('Layouts')
-@UseGuards(JwtAuthGuard)
+@UseGuards(UserAuthGuard)
 export class LayoutsController {
   constructor(
     private createLayoutUseCase: CreateLayoutUseCase,
@@ -67,33 +64,35 @@ export class LayoutsController {
     private filterLayoutsUseCase: FilterLayoutsUseCase,
     private getLayoutUseCase: GetLayoutUseCase,
     private setDefaultLayoutUseCase: SetDefaultLayoutUseCase,
-    private updateLayoutUseCase: UpdateLayoutUseCase,
-    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService
+    private updateLayoutUseCase: UpdateLayoutUseCase
   ) {}
 
   @Post('')
   @ExternalApiAccessible()
-  @ApiCreatedResponse({
-    type: CreateLayoutResponseDto,
-    description: 'The layout has been successfully created.',
-  })
+  @ApiResponse(CreateLayoutResponseDto, 201)
   @ApiOperation({ summary: 'Layout creation', description: 'Create a layout' })
+  @OtelSpan()
   async createLayout(
     @UserSession() user: IJwtPayload,
     @Body() body: CreateLayoutRequestDto
   ): Promise<CreateLayoutResponseDto> {
+    Logger.verbose('Executing new layout command');
+
     const layout = await this.createLayoutUseCase.execute(
       CreateLayoutCommand.create({
         environmentId: user.environmentId,
         organizationId: user.organizationId,
         userId: user._id,
         name: body.name,
+        identifier: body.identifier,
         description: body.description,
         content: body.content,
         variables: body.variables,
         isDefault: body.isDefault,
       })
     );
+
+    Logger.verbose('Created new Layout' + layout._id);
 
     return {
       _id: layout._id,
@@ -156,10 +155,7 @@ export class LayoutsController {
 
   @Get('/:layoutId')
   @ExternalApiAccessible()
-  @ApiOkResponse({
-    type: GetLayoutResponseDto,
-    description: 'The layout with the layoutId provided exists in the database.',
-  })
+  @ApiResponse(GetLayoutResponseDto)
   @ApiNotFoundResponse({
     description: 'The layout with the layoutId provided does not exist in the database.',
   })
@@ -204,10 +200,7 @@ export class LayoutsController {
 
   @Patch('/:layoutId')
   @ExternalApiAccessible()
-  @ApiOkResponse({
-    type: UpdateLayoutResponseDto,
-    description: 'The layout with the layoutId provided has been updated correctly.',
-  })
+  @ApiResponse(UpdateLayoutResponseDto)
   @ApiBadRequestResponse({
     description: 'The payload provided or the URL param are not right.',
   })
@@ -217,6 +210,7 @@ export class LayoutsController {
   @ApiConflictResponse({
     description:
       'One default layout is needed. If you are trying to turn a default layout as not default, you should turn a different layout as default first and automatically it will be done by the system.',
+    schema: { example: `One default layout is required` },
   })
   @ApiOperation({
     summary: 'Update a layout',
@@ -238,6 +232,7 @@ export class LayoutsController {
         userId: user._id,
         layoutId,
         name: body.name,
+        identifier: body.identifier,
         description: body.description,
         content: body.content,
         variables: body.variables,
